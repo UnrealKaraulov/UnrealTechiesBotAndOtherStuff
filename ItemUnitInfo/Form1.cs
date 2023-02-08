@@ -30,7 +30,7 @@ namespace ItemUnitInfo
         void ReXfresh()
         {
 
-            ProcessMemory war3proc = new ProcessMemory( Process.GetProcessesByName( "war3" ) [ 0 ].Id );
+            ProcessMemory war3proc = new ProcessMemory( Process.GetProcessesByName( "war3" ) [ 0 ].Id, "war3");
             war3proc.StartProcess( );
             int offset1 = war3proc.ReadInt( "Game.dll" , 0xAB4F80 );
             offset1 = war3proc.ReadInt( offset1 + 0x3BC );

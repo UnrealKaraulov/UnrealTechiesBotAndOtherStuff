@@ -30,8 +30,6 @@ namespace TechiesBotDebugViewer
         int errorcount2 = 0;
         int errorcount3 = 0;
 
-        bool inupdate = false;
-
         private void addtexttolisbox1(string x)
         {
             if (previewdata.Count < 50)
@@ -105,7 +103,7 @@ namespace TechiesBotDebugViewer
             ;
             try
             {
-                war3mem = new ProcessMemory(war3proc.Id);
+                war3mem = new ProcessMemory(war3proc.Id,"war3");
                 war3mem.StartProcess();
                 Thread.Sleep(200);
                 int addr = BitConverter.ToInt32(File.ReadAllBytes(Path.GetDirectoryName(war3proc.MainModule.FileName) + @"\debug.bin"), 0);

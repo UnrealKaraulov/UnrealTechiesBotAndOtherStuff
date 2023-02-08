@@ -1,0 +1,11 @@
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.csproj.AssemblyReference.cache
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.csproj.SuggestedBindingRedirects.cache
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.Form1.resources
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.Properties.Resources.resources
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.csproj.GenerateResource.cache
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.csproj.CoreCompileInputs.cache
+C:\Projects\WAR3\Free_bots\Release\TechiesBotDebugViewer.exe.config
+C:\Projects\WAR3\Free_bots\Release\TechiesBotDebugViewer.exe
+C:\Projects\WAR3\Free_bots\Release\TechiesBotDebugViewer.pdb
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.exe
+C:\Projects\WAR3\Free_bots\TechiesBotDebugViewer\obj\x86\Release\TechiesBotDebugViewer.pdb
