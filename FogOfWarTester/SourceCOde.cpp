@@ -243,15 +243,15 @@ void TextPrint( char *szText, float fDuration )
 }
 
 
-time_t lastaccess = 0;
+time_t LastChatAccess = 0;
 
 void TextPrintUnspammed( char *szText )
 {
 	time_t nextaccess = time( 0 );
-	if ( nextaccess > lastaccess + 3 )
+	if ( nextaccess > LastChatAccess + 3 )
 	{
 		float fDuration = 2.0f;
-		lastaccess = nextaccess;
+		LastChatAccess = nextaccess;
 #ifdef BOTDEBUG
 		PrintDebugInfo( "PrintText" );
 #endif
@@ -1478,23 +1478,23 @@ BOOL __cdecl IsUnitVisibleToPlayer( int unitaddr, int player )
 		return FALSE;
 }
 
-int techiesaddr = 0;
+int any_techies_addr = 0;
 
 BOOL SelectTechies( )
 {
 	BOOL returnvalue = FALSE;
-	if ( techiesaddr > 0 )
+	if ( any_techies_addr > 0 )
 	{
-		if ( GetSelectedOwnedUnit( ) == techiesaddr )
+		if ( GetSelectedOwnedUnit( ) == any_techies_addr )
 			return TRUE;
 
-		if ( IsNotBadUnit( techiesaddr ) )
+		if ( IsNotBadUnit( any_techies_addr ) )
 		{
 #ifdef BOTDEBUG
 			PrintDebugInfo( "Techies selected" );
 #endif
 			std::vector<int> unitstoselect;
-			unitstoselect.push_back( techiesaddr );
+			unitstoselect.push_back( any_techies_addr );
 			returnvalue = SelectMultipleUnits( &unitstoselect[ 0 ], unitstoselect.size( ) );
 			unitstoselect.clear( );
 		}
@@ -1503,8 +1503,8 @@ BOOL SelectTechies( )
 #ifdef BOTDEBUG
 			PrintDebugInfo( "Techies not selected 11" );
 #endif
-			if ( !IsNotBadUnit( techiesaddr, techiesaddr ) && !IsHero( techiesaddr ) )
-				techiesaddr = 0;
+			if ( !IsNotBadUnit( any_techies_addr, any_techies_addr ) && !IsHero( any_techies_addr ) )
+				any_techies_addr = 0;
 
 		}
 	}
@@ -1678,8 +1678,8 @@ void SetTechiesNewAddrForAlly( )
 			int ownunit = GetSelectedOwnedUnit( );
 			if ( IsNotBadUnit( ownunit ) && IsHero( ownunit ) )
 			{
-				techiesoldaddr = techiesaddr;
-				techiesaddr = ownunit;
+				techiesoldaddr = any_techies_addr;
+				any_techies_addr = ownunit;
 				ownunitaddr = ownunit;
 			}
 		}
@@ -1696,7 +1696,7 @@ void SetOldTechiesAddr( )
 	{
 		NeedOldTechies = FALSE;
 		if ( techiesoldaddr != 0 )
-			techiesaddr = techiesoldaddr;
+			any_techies_addr = techiesoldaddr;
 	}
 }
 char abilfound[ 128 ];
@@ -1731,7 +1731,7 @@ int *__fastcall sub_6F4089C0my( int a1, int unused )
 	return sub_6F4089C0_ptr( a1, unused );
 }
 
-void JustTechies( )
+void DetonateIfNeed( )
 {
 	Sleep( 1000 );
 	while ( !GetSelectedOwnedUnit( ) )
@@ -1908,12 +1908,12 @@ void TechiesThread( )
 	{
 		if ( IsGame( ) )
 		{
-			JustTechies( );
+			DetonateIfNeed( );
 		}
 		else
 		{
 			TechiesFound = FALSE;
-			techiesaddr = 0;
+			any_techies_addr = 0;
 			Sleep( 3000 );
 			while ( !IsGame( ) )
 			{

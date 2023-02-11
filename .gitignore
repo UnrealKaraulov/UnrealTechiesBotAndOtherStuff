@@ -14,3 +14,7 @@
 *.obj
 *.cache
 *.pdb
+*.ipch
+*.txt
+*.sarif
+*.json

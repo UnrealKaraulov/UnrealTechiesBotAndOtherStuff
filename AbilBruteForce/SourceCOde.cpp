@@ -35,7 +35,7 @@ int _W3XGlobalClass;
 int UseWarnIsBadReadPtr = 1;
 BOOL DebugActive = FALSE;
 
-int techiesaddr = 0;
+int any_techies_addr = 0;
 std::vector<int> unitstoselect;
 
 time_t LatestTime = time( NULL );
@@ -315,7 +315,7 @@ void TextPrint2( char* text, float StayUpTime )
 	}
 }
 
-time_t lastaccess = 0;
+time_t LastChatAccess = 0;
 
 void TextPrintUnspammed( char *szText )
 {
@@ -328,12 +328,12 @@ void TextPrintUnspammed( char *szText )
 	if ( !ExpertModeEnabled )
 		nextaccess += 1;
 
-	if ( nextaccess > lastaccess + 1 )
+	if ( nextaccess > LastChatAccess + 1 )
 	{
 		float fDuration = 1.3f;
 		if ( !ExpertModeEnabled )
 			fDuration += 0.7f;
-		lastaccess = nextaccess;
+		LastChatAccess = nextaccess;
 #ifdef BOTDEBUG
 		PrintDebugInfo( "PrintText" );
 #endif
@@ -1352,12 +1352,12 @@ int GetUnitAbilityLevel( int unitaddr, int id, BOOL checkavaiable = FALSE, BOOL 
 }
 
 
-std::string bufflist;
+std::string PrintBuffListStr;
 
 
 float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 : physical*/ )
 {
-	bufflist.clear( );
+	PrintBuffListStr.clear( );
 #ifdef BOTDEBUG
 	PrintDebugInfo( "CheckUnitDmg" );
 #endif
@@ -1402,7 +1402,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		GetUnitAbilityLevel( unitaddr, 'B05S', FALSE, TRUE )
 		) )
 	{
-		bufflist = std::string( "100% shield" );
+		PrintBuffListStr = std::string( "100% shield" );
 		return 0.0f;
 	}
 
@@ -1428,7 +1428,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		if ( IsNotBadUnit( unitaddr, TRUE ) && GetUnitAbilityLevel( unitaddr, 'A05G', TRUE ) == 0 )
 		{
 
-			bufflist += std::string( "[magic 100%]" );
+			PrintBuffListStr += std::string( "[magic 100%]" );
 
 			return 0.0f;
 		}
@@ -1436,7 +1436,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 
 	if ( dmgtype == 1 && ( IsClassEqual( unitaddr, "H00I" ) || IsClassEqual( unitaddr, "H00J" ) ) )
 	{
-		bufflist += std::string( "[magic 10%]" );
+		PrintBuffListStr += std::string( "[magic 10%]" );
 		outdmg = outdmg * ( ( 100.0f - 10.0f ) / 100.0f );
 	}
 
@@ -1444,7 +1444,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 	int medusashield = GetUnitAbilityLevel( unitaddr, 'BNms' );
 	if ( medusashield > 0 )
 	{
-		bufflist += std::string( "[all 50%]" );
+		PrintBuffListStr += std::string( "[all 50%]" );
 		outdmg = outdmg * ( ( 100.0f - 50.0f ) / 100.0f );
 	}
 
@@ -1452,7 +1452,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 	int captainbuff = GetUnitAbilityLevel( unitaddr, 'B09U' );
 	if ( captainbuff > 0 )
 	{
-		bufflist += std::string( "[all 50%]" );
+		PrintBuffListStr += std::string( "[all 50%]" );
 		outdmg = outdmg * ( ( 100.0f - 50.0f ) / 100.0f );
 	}
 
@@ -1477,7 +1477,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		int parts = hppercent / 7 + 1;
 		dmgprotectlvl = dmgprotectlvl * parts;
 
-		bufflist += std::string( "[magic " ) + std::to_string( ( int ) dmgprotectlvl ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[magic " ) + std::to_string( ( int ) dmgprotectlvl ) + std::string( "%]" );
 
 		outdmg = outdmg * ( ( 100.0f - dmgprotectlvl ) / 100.0f );
 	}
@@ -1490,7 +1490,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		// 3 lvl = (3*2)+4 = 10
 		// 4 lvl = (4*2)+4 = 12
 		float dmgprotect = ( pudgelvl * 2.0f ) + 4.0f;
-		bufflist += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
 
 		outdmg = outdmg * ( ( 100.0f - dmgprotect ) / 100.0f );
 
@@ -1505,7 +1505,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		// 3 lvl = (3*2)+4 = 10
 		// 4 lvl = (4*2)+4 = 12
 		float dmgprotect = rubiclvl * 5.0f;
-		bufflist += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
 
 		outdmg = outdmg * ( ( 100.0f - dmgprotect ) / 100.0f );
 
@@ -1522,7 +1522,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		// 3 lvl = (3*4)+6 = 16
 		// 4 lvl = (4*4)+6 = 22
 		float dmgprotect = ( spectralvl * 4.0f ) + 6.0f;
-		bufflist += std::string( "[all " ) + std::to_string( dmgprotect ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[all " ) + std::to_string( dmgprotect ) + std::string( "%]" );
 
 		outdmg = outdmg * ( ( 100.0f - dmgprotect ) / 100.0f );
 	}
@@ -1536,7 +1536,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		// 3 lvl = (3*8)+18 = 42
 		// 4 lvl = (4*8)+18 = 50
 		float dmgprotect = ( maginalvl * 8.0f ) + 18.0f;
-		bufflist += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
 		outdmg = outdmg * ( ( 100.0f - dmgprotect ) / 100.0f );
 	}
 
@@ -1548,7 +1548,7 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 		// 3 lvl = (3*5)+5 = 20
 		// 4 lvl = (4*5)+5 = 25
 		float dmgprotect = ( viperlvl * 5.0f ) + 5.0f;
-		bufflist += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
+		PrintBuffListStr += std::string( "[magic " ) + std::to_string( dmgprotect ) + std::string( "%]" );
 		outdmg = outdmg * ( ( 100.0f - dmgprotect ) / 100.0f );
 	}
 
@@ -1561,12 +1561,12 @@ float GetDmgForUnit( int unitaddr, float dmg, int dmgtype = 1/* 1 : magical , 2 
 			{
 				if ( IsClassEqual( nitem, "I04P" ) )
 				{
-					bufflist += std::string( "[magic 15%]" );
+					PrintBuffListStr += std::string( "[magic 15%]" );
 					outdmg = outdmg * ( ( 100.0f - 15.0f ) / 100.0f );
 				}
 				else if ( IsClassEqual( nitem, "I0K6" ) )
 				{
-					bufflist += std::string( "[magic 30%]" );
+					PrintBuffListStr += std::string( "[magic 30%]" );
 					outdmg = outdmg * ( ( 100.0f - 30.0f ) / 100.0f );
 				}
 			}
@@ -1623,18 +1623,18 @@ BOOL __cdecl IsUnitVisibleToPlayer( int unitaddr, int player )
 BOOL SelectTechies( )
 {
 	BOOL returnvalue = FALSE;
-	if ( techiesaddr > 0 )
+	if ( any_techies_addr > 0 )
 	{
-		if ( GetSelectedOwnedUnit( ) == techiesaddr )
+		if ( GetSelectedOwnedUnit( ) == any_techies_addr )
 			return TRUE;
 
-		if ( IsNotBadUnit( techiesaddr ) )
+		if ( IsNotBadUnit( any_techies_addr ) )
 		{
 #ifdef BOTDEBUG
 			PrintDebugInfo( "Techies selected" );
 #endif
 			unitstoselect.clear( );
-			unitstoselect.push_back( techiesaddr );
+			unitstoselect.push_back( any_techies_addr );
 			returnvalue = SelectAllUnits( );
 			unitstoselect.clear( );
 		}
@@ -1643,8 +1643,8 @@ BOOL SelectTechies( )
 #ifdef BOTDEBUG
 			PrintDebugInfo( "Techies not selected 11" );
 #endif
-			if ( !IsNotBadUnit( techiesaddr, techiesaddr ) && !IsHero( techiesaddr ) )
-				techiesaddr = 0;
+			if ( !IsNotBadUnit( any_techies_addr, any_techies_addr ) && !IsHero( any_techies_addr ) )
+				any_techies_addr = 0;
 
 		}
 	}
@@ -1781,8 +1781,8 @@ void SetTechiesNewAddrForAlly( )
 			int ownunit = GetSelectedOwnedUnit( );
 			if ( IsNotBadUnit( ownunit ) && IsHero( ownunit ) )
 			{
-				techiesoldaddr = techiesaddr;
-				techiesaddr = ownunit;
+				techiesoldaddr = any_techies_addr;
+				any_techies_addr = ownunit;
 				ownunitaddr = ownunit;
 			}
 		}
@@ -1799,14 +1799,14 @@ void SetOldTechiesAddr( )
 	{
 		NeedOldTechies = FALSE;
 		if ( techiesoldaddr != 0 )
-			techiesaddr = techiesoldaddr;
+			any_techies_addr = techiesoldaddr;
 	}
 }
 
 int TechiesEnemyTimer = 300;
 char abilfound[ 128 ];
 
-void JustTechies( )
+void DetonateIfNeed( )
 {
 	LatestTime = time( NULL );
 	retryall:
@@ -1996,13 +1996,13 @@ BOOL TechiesThread( )
 					forcestaffcooldown = 0;
 					daggercooldown = 0;
 					BombList.clear( );
-					bufflist.clear( );
-					lastaccess = 0;
+					PrintBuffListStr.clear( );
+					LastChatAccess = 0;
 					TechiesFound = FALSE;
 					TechiesType = -1;
 					TechiesSlot = -1;
 					unitstoselect.clear( );
-					techiesaddr = 0;
+					any_techies_addr = 0;
 
 #ifdef BOTDEBUG
 					DebugActive = TRUE;
@@ -2012,7 +2012,7 @@ BOOL TechiesThread( )
 
 					while ( IsGame( ) )
 					{
-						JustTechies( );
+						DetonateIfNeed( );
 						Sleep( 60 );
 						LatestTime = time( NULL );
 					}
@@ -2026,13 +2026,13 @@ BOOL TechiesThread( )
 				forcestaffcooldown = 0;
 				daggercooldown = 0;
 				BombList.clear( );
-				bufflist.clear( );
-				lastaccess = 0;
+				PrintBuffListStr.clear( );
+				LastChatAccess = 0;
 				TechiesType = -1;
 				TechiesSlot = -1;
 				TechiesFound = FALSE;
 				unitstoselect.clear( );
-				techiesaddr = 0;
+				any_techies_addr = 0;
 				Sleep( 1000 );
 				while ( !IsGame( ) )
 				{
