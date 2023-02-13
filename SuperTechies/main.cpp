@@ -752,24 +752,24 @@ void LoadDefaultDotaConfiguration()
 	techies_bombs.push_back(tmpBomb);
 
 	tmpBomb.unit_typeid = 'n00P';
-	tmpBomb.dmg = 400.0f;
-	tmpBomb.dmg2 = 400.0f;
+	tmpBomb.dmg = 375.0f;
+	tmpBomb.dmg2 = 375.0f;
 	tmpBomb.range1 = 100.0f;
 	tmpBomb.range2 = 100.0f;
 	tmpBomb.remote = false;
 	techies_bombs.push_back(tmpBomb);
 
 	tmpBomb.unit_typeid = 'n00Q';
-	tmpBomb.dmg = 500.0f;
-	tmpBomb.dmg2 = 500.0f;
+	tmpBomb.dmg = 450.0f;
+	tmpBomb.dmg2 = 450.0f;
 	tmpBomb.range1 = 100.0f;
 	tmpBomb.range2 = 100.0f;
 	tmpBomb.remote = false;
 	techies_bombs.push_back(tmpBomb);
 
 	tmpBomb.unit_typeid = 'n00N';
-	tmpBomb.dmg = 600.0f;
-	tmpBomb.dmg2 = 600.0f;
+	tmpBomb.dmg = 525.0f;
+	tmpBomb.dmg2 = 525.0f;
 	tmpBomb.range1 = 100.0f;
 	tmpBomb.range2 = 100.0f;
 	tmpBomb.remote = false;
