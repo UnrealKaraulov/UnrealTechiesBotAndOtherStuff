@@ -14,7 +14,9 @@
 #include <cmath>
 #include <set>
 #include <filesystem>
-#include "inicpp.h"
+
+#include "IniReader.h"
+#include "IniWriter.h"
 
 #define IsKeyPressed(CODE) (GetAsyncKeyState(CODE) & 0x8000) > 0
 
@@ -29,6 +31,8 @@ float GetProtectForUnit(unsigned char* unitaddr);
 int GetUnitHPPercent(unsigned char* unitaddr);
 int GetObjectTypeId(unsigned char* unit_or_item_addr);
 void TextPrint(const char* szText, float fDuration);
+int GetUnitOwnerSlot(unsigned char* unitaddr);
+std::vector<unsigned char*> GetUnitsArray();
 
 std::string techiesBotFileName = "techies";
 
@@ -106,6 +110,10 @@ struct BombConfigStruct
 	float range1;
 	float range2;
 	bool remote;
+	float lvl_multiplier; // lvl_skillid multiplier
+	int lvl_skillid; // lvl 
+	float result_dmg1; // base at dmg1 * lvl_multiplier
+	float result_dmg2; // base at dmg2 * lvl_multiplier
 };
 
 struct UnitConfigStruct
@@ -134,12 +142,18 @@ struct AbilConfigStruct
 
 DWORD customGameThread = 0;
 std::string GameDllName = "Game.dll";
-ini::IniFile maincfg;
-ini::IniFile mapcfg;
+
+CIniWriter* maincfg_write = NULL;
+CIniReader* maincfg_read = NULL;
+
+CIniWriter* mapcfg_write = NULL;
+CIniReader* mapcfg_read = NULL;
 
 int EnableAutoExplode = 1;
 bool EnableDagger = 0;
 bool EnableForceStaff = 1;
+
+int BaseDmgReducing = 10;
 
 struct TechiesUnitAbilStr
 {
@@ -456,7 +470,7 @@ bool GetBombStructFromCfg(unsigned char* unitaddr, BombStruct& tmpBombStruct)
 		return false;
 
 	int input_typeid = GetObjectTypeId(unitaddr);
-
+	int input_owner = GetUnitOwnerSlot(unitaddr);
 	for (auto& bomb : techies_bombs)
 	{
 		// ignore remote bombs if techies not owned
@@ -472,7 +486,31 @@ bool GetBombStructFromCfg(unsigned char* unitaddr, BombStruct& tmpBombStruct)
 			tmpBombStruct.range1 = bomb.range1;
 			tmpBombStruct.range2 = bomb.range2;
 			tmpBombStruct.remote = bomb.remote;
+
 			GetUnitLocation3D(unitaddr, tmpBombStruct.x, tmpBombStruct.y, tmpBombStruct.z);
+
+			if (bomb.lvl_skillid != 0)
+			{
+				auto units = GetUnitsArray();
+				for (auto unit : units)
+				{
+					if (!IsNotBadUnit(unit, 1))
+						continue;
+
+					int cur_owner = GetUnitOwnerSlot(unit);
+					if (input_owner == cur_owner)
+					{
+						int abillevel = GetUnitAbilityLevel(unit, bomb.lvl_skillid);
+						if (abillevel > 0)
+						{
+							float outmultiplier = bomb.lvl_multiplier * abillevel;
+							tmpBombStruct.dmg = tmpBombStruct.dmg * outmultiplier;
+							tmpBombStruct.dmg2 = tmpBombStruct.dmg2 * outmultiplier;
+							break;
+						}
+					}
+				}
+			}
 
 			return true;
 		}
@@ -699,6 +737,11 @@ void LoadDefaultDotaConfiguration()
 
 	BombConfigStruct tmpBomb = BombConfigStruct();
 
+	tmpBomb.result_dmg1 = tmpBomb.result_dmg2 = 0.0f;
+
+	tmpBomb.lvl_multiplier = 0.0f;
+	tmpBomb.lvl_skillid = 0;
+
 	tmpBomb.unit_typeid = 'n00O';
 	tmpBomb.dmg = 300.0f;
 	tmpBomb.dmg2 = 300.0f;
@@ -771,6 +814,7 @@ void LoadDefaultDotaConfiguration()
 	tmpBomb.range1 = 375.0f;
 	tmpBomb.range2 = 375.0f;
 	tmpBomb.remote = false;
+	tmpBomb.lvl_skillid = '5';
 	techies_bombs.push_back(tmpBomb);
 
 	// Storm 1 skill 
@@ -780,6 +824,7 @@ void LoadDefaultDotaConfiguration()
 	tmpBomb.range1 = 235.0f;
 	tmpBomb.range2 = 235.0f;
 	tmpBomb.remote = false;
+	tmpBomb.lvl_skillid = '5';
 	techies_bombs.push_back(tmpBomb);
 }
 
@@ -799,90 +844,84 @@ int GetTypeIdFromString(std::string type_id)
 
 void SaveMapConfiguration()
 {
-	std::string path = techiesBotFileName + "\\";
-	path = path + MapFileName;
-	path.pop_back(); path.pop_back(); path.pop_back(); path.pop_back();
-	path += ".ini";
+	mapcfg_write->WriteString("GENERAL", "DAGGER_ITEM_ID", GetStringFromTypeId(DaggerItemId).c_str());
+	mapcfg_write->WriteString("GENERAL", "DAGGER_ABILITY_ID", GetStringFromTypeId(DaggerAbilId).c_str());
+	mapcfg_write->WriteFloat("GENERAL", "DAGGER_DISTANCE", DaggerDistance);
 
-	mapcfg["GENERAL"]["DAGGER_ITEM_ID"] = GetStringFromTypeId(DaggerItemId);
-	mapcfg["GENERAL"]["DAGGER_ABILITY_ID"] = GetStringFromTypeId(DaggerAbilId);
-	mapcfg["GENERAL"]["DAGGER_DISTANCE"] = DaggerDistance;
+	mapcfg_write->WriteString("GENERAL", "FORCESTAFF_ITEM_ID", GetStringFromTypeId(ForceStaffItemId).c_str());
+	mapcfg_write->WriteString("GENERAL", "FORCESTAFF_ABILITY_ID", GetStringFromTypeId(ForceStaffAbilId).c_str());
+	mapcfg_write->WriteFloat("GENERAL", "FORCESTAFF_DISTANCE", ForceStaffDistance);
 
-	mapcfg["GENERAL"]["FORCESTAFF_ITEM_ID"] = GetStringFromTypeId(ForceStaffItemId);
-	mapcfg["GENERAL"]["FORCESTAFF_ABILITY_ID"] = GetStringFromTypeId(ForceStaffAbilId);
-	mapcfg["GENERAL"]["FORCESTAFF_DISTANCE"] = ForceStaffDistance;
-
-	mapcfg["GENERAL"]["SUPPORTED_HERO_NUM"] = techies_ids.size();
+	mapcfg_write->WriteInt("GENERAL", "SUPPORTED_HERO_NUM", techies_ids.size());
 
 	for (unsigned int i = 0; i < techies_ids.size(); i++)
 	{
 		std::string herostr = "HERO";
 		herostr += std::to_string(i + 1);
 
-		mapcfg[herostr]["HERO_UNIT_TYPE_ID"] = GetStringFromTypeId(techies_ids[i].unitid);
-		mapcfg[herostr]["HERO_UNIT_ABIL_ID"] = GetStringFromTypeId(techies_ids[i].abilid);
+		mapcfg_write->WriteString(herostr.c_str(), "HERO_UNIT_TYPE_ID", GetStringFromTypeId(techies_ids[i].unitid).c_str());
+		mapcfg_write->WriteString(herostr.c_str(), "HERO_UNIT_ABIL_ID", GetStringFromTypeId(techies_ids[i].abilid).c_str());
 	}
 
-	mapcfg["GENERAL"]["SUPPORTED_BOMB_COUNT"] = techies_bombs.size();
+	mapcfg_write->WriteInt("GENERAL", "SUPPORTED_BOMB_COUNT", techies_bombs.size());
 	for (unsigned int i = 0; i < techies_bombs.size(); i++)
 	{
 		std::string bombstr = "BOMB";
 		bombstr += std::to_string(i + 1);
-		mapcfg[bombstr]["BOMB_TYPE_ID"] = GetStringFromTypeId(techies_bombs[i].unit_typeid);
-		mapcfg[bombstr]["BOMB_IS_REMOTE"] = techies_bombs[i].remote ? 1 : 0;
-		mapcfg[bombstr]["BOMB_FULL_DMG"] = techies_bombs[i].dmg;
-		mapcfg[bombstr]["BOMB_PART_DMG"] = techies_bombs[i].dmg2;
-		mapcfg[bombstr]["BOMB_RANGE_FULL"] = techies_bombs[i].range1;
-		mapcfg[bombstr]["BOMB_RANGE_PART"] = techies_bombs[i].range2;;
+		mapcfg_write->WriteString(bombstr.c_str(), "BOMB_TYPE_ID", GetStringFromTypeId(techies_bombs[i].unit_typeid).c_str());
+		mapcfg_write->WriteBool(bombstr.c_str(), "BOMB_IS_REMOTE", techies_bombs[i].remote);
+		mapcfg_write->WriteFloat(bombstr.c_str(), "BOMB_FULL_DMG", techies_bombs[i].dmg);
+		mapcfg_write->WriteFloat(bombstr.c_str(), "BOMB_PART_DMG", techies_bombs[i].dmg2);
+		mapcfg_write->WriteFloat(bombstr.c_str(), "BOMB_RANGE_FULL", techies_bombs[i].range1);
+		mapcfg_write->WriteFloat(bombstr.c_str(), "BOMB_RANGE_PART", techies_bombs[i].range2);
+		mapcfg_write->WriteFloat(bombstr.c_str(), "BOMB_LVL_MULTIPLIER", techies_bombs[i].lvl_multiplier);
+		mapcfg_write->WriteString(bombstr.c_str(), "BOMB_LVL_BASESKILLID", GetStringFromTypeId(techies_bombs[i].lvl_skillid).c_str());
 	}
 
-	mapcfg["GENERAL"]["BOMB_DETONATE_COMMAND"] = DetonateCommand;
+	mapcfg_write->WriteInt("GENERAL", "BOMB_DETONATE_COMMAND", DetonateCommand);
 
 
-	mapcfg["GENERAL"]["PROTECT_DMG_ABIL_COUNT"] = protection_list_abils.size();
+	mapcfg_write->WriteInt("GENERAL", "PROTECT_DMG_ABIL_COUNT", protection_list_abils.size());
 	for (unsigned int i = 0; i < protection_list_abils.size(); i++)
 	{
 		std::string abilstr = "ABIL";
 		abilstr += std::to_string(i + 1);
 
-		mapcfg[abilstr]["ABILITY_TYPE_ID"] = GetStringFromTypeId(protection_list_abils[i].abil_typeid);
-		mapcfg[abilstr]["ABILITY_TYPE"] = protection_list_abils[i].type;
-		mapcfg[abilstr]["ABILITY_UNIT_CODE"] = GetStringFromTypeId(protection_list_abils[i].unit_typeid);
-		mapcfg[abilstr]["DMG_PROTECT_TYPE"] = protection_list_abils[i].protect_type;
-		mapcfg[abilstr]["DMG_LEVELS"] = protection_list_abils[i].protectmult.size();
+		mapcfg_write->WriteString(abilstr.c_str(), "ABILITY_TYPE_ID", GetStringFromTypeId(protection_list_abils[i].abil_typeid).c_str());
+		mapcfg_write->WriteInt(abilstr.c_str(), "ABILITY_TYPE", protection_list_abils[i].type);
+		mapcfg_write->WriteString(abilstr.c_str(), "ABILITY_UNIT_CODE", GetStringFromTypeId(protection_list_abils[i].unit_typeid).c_str());
+		mapcfg_write->WriteInt(abilstr.c_str(), "DMG_PROTECT_TYPE", protection_list_abils[i].protect_type);
+		mapcfg_write->WriteInt(abilstr.c_str(), "DMG_LEVELS", protection_list_abils[i].protectmult.size());
 		for (unsigned int n = 0; n < protection_list_abils[i].protectmult.size(); n++)
 		{
 			std::string dmgstr = "DMG_PROTECT_MULTIPLIER";
-			dmgstr += std::to_string(i + 1);
-			mapcfg[abilstr][dmgstr] = protection_list_abils[i].protectmult[n];
+			dmgstr += std::to_string(n + 1);
+			mapcfg_write->WriteFloat(abilstr.c_str(), dmgstr.c_str(), protection_list_abils[i].protectmult[n]);
 		}
 	}
 
-	mapcfg["GENERAL"]["PROTECT_DMG_UNIT_COUNT"] = protection_list_units.size();
+	mapcfg_write->WriteInt("GENERAL", "PROTECT_DMG_UNIT_COUNT", protection_list_units.size());
 	for (unsigned int i = 0; i < protection_list_units.size(); i++)
 	{
 		std::string unitstr = "UNIT";
 		unitstr += std::to_string(i + 1);
 
-		mapcfg[unitstr]["UNIT_TYPE_ID"] = GetStringFromTypeId(protection_list_units[i].unit_typeid);
-		mapcfg[unitstr]["UNIT_PROTECT_TYPE"] = protection_list_units[i].protect_type;
-		mapcfg[unitstr]["DMG_PROTECT_MULTIPLIER"] = protection_list_units[i].protectmult;
+		mapcfg_write->WriteString(unitstr.c_str(), "UNIT_TYPE_ID", GetStringFromTypeId(protection_list_units[i].unit_typeid).c_str());
+		mapcfg_write->WriteInt(unitstr.c_str(), "UNIT_PROTECT_TYPE", protection_list_units[i].protect_type);
+		mapcfg_write->WriteFloat(unitstr.c_str(), "DMG_PROTECT_MULTIPLIER", protection_list_units[i].protectmult);
 	}
 
 
-	mapcfg["GENERAL"]["PROTECT_DMG_ITEM_COUNT"] = protection_list_items.size();
+	mapcfg_write->WriteInt("GENERAL", "PROTECT_DMG_ITEM_COUNT", protection_list_items.size());
 	for (unsigned int i = 0; i < protection_list_items.size(); i++)
 	{
 		std::string itemstr = "ITEM";
 		itemstr += std::to_string(i + 1);
 
-		mapcfg[itemstr]["ITEM_TYPE_ID"] = GetStringFromTypeId(protection_list_items[i].item_typeid);
-		mapcfg[itemstr]["ITEM_PROTECT_TYPE"] = protection_list_items[i].protect_type;
-		mapcfg[itemstr]["ITEM_PROTECT_MULTIPLIER"] = protection_list_items[i].protectmult;
+		mapcfg_write->WriteString(itemstr.c_str(), "ITEM_TYPE_ID", GetStringFromTypeId(protection_list_items[i].item_typeid).c_str());
+		mapcfg_write->WriteInt(itemstr.c_str(), "ITEM_PROTECT_TYPE", protection_list_items[i].protect_type);
+		mapcfg_write->WriteFloat(itemstr.c_str(), "ITEM_PROTECT_MULTIPLIER", protection_list_items[i].protectmult);
 	}
-
-
-	mapcfg.save(path);
 }
 
 void ParseMapConfiguration()
@@ -892,10 +931,15 @@ void ParseMapConfiguration()
 	path.pop_back(); path.pop_back(); path.pop_back(); path.pop_back();
 	path += ".ini";
 
-	mapcfg.clear();
+	if (mapcfg_read)
+		delete mapcfg_read;
 
-	if (std::filesystem::exists(path))
-		mapcfg.load(path);
+	mapcfg_read = new CIniReader(path.c_str());
+
+	if (mapcfg_write)
+		delete mapcfg_write;
+
+	mapcfg_write = new CIniWriter(path.c_str());
 
 	techies_ids.clear();
 	techies_bombs.clear();
@@ -903,7 +947,7 @@ void ParseMapConfiguration()
 	protection_list_items.clear();
 	protection_list_units.clear();
 
-	if (mapcfg.empty())
+	if (!std::filesystem::exists(path))
 	{
 		LoadDefaultDotaConfiguration();
 		SaveMapConfiguration();
@@ -911,64 +955,73 @@ void ParseMapConfiguration()
 	}
 
 
-	DaggerItemId = GetTypeIdFromString(mapcfg["GENERAL"]["DAGGER_ITEM_ID"].as<std::string>());
-	DaggerAbilId = GetTypeIdFromString(mapcfg["GENERAL"]["DAGGER_ABILITY_ID"].as<std::string>());
-	DaggerDistance = mapcfg["GENERAL"]["DAGGER_DISTANCE"].as<float>();
+	DaggerItemId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "DAGGER_ITEM_ID", ""));
+	DaggerAbilId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "DAGGER_ABILITY_ID", ""));
+	DaggerDistance = mapcfg_read->ReadFloat("GENERAL", "DAGGER_DISTANCE", 0.0f);
 
-	ForceStaffItemId = GetTypeIdFromString(mapcfg["GENERAL"]["FORCESTAFF_ITEM_ID"].as<std::string>());
-	ForceStaffAbilId = GetTypeIdFromString(mapcfg["GENERAL"]["FORCESTAFF_ABILITY_ID"].as<std::string>());
-	ForceStaffDistance = mapcfg["GENERAL"]["FORCESTAFF_DISTANCE"].as<float>();
+	ForceStaffItemId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "FORCESTAFF_ITEM_ID", ""));
+	ForceStaffAbilId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "FORCESTAFF_ABILITY_ID", ""));
+	ForceStaffDistance = mapcfg_read->ReadFloat("GENERAL", "FORCESTAFF_DISTANCE", 0.0f);
 
-	int heronum = mapcfg["GENERAL"]["SUPPORTED_HERO_NUM"].as<int>();
+	int heronum = mapcfg_read->ReadInt("GENERAL", "SUPPORTED_HERO_NUM", 0);
 	for (int i = 0; i < heronum; i++)
 	{
 		std::string herostr = "HERO";
 		herostr += std::to_string(i + 1);
 
-		int unitid = GetTypeIdFromString(mapcfg[herostr]["HERO_UNIT_TYPE_ID"].as<std::string>());
-		int abilid = GetTypeIdFromString(mapcfg[herostr]["HERO_UNIT_ABIL_ID"].as<std::string>());
+		int unitid = GetTypeIdFromString(mapcfg_read->ReadString(herostr.c_str(), "HERO_UNIT_TYPE_ID", ""));
+		int abilid = GetTypeIdFromString(mapcfg_read->ReadString(herostr.c_str(), "HERO_UNIT_ABIL_ID", ""));
 		if (unitid != 0 || abilid != 0)
 		{
 			techies_ids.push_back({ unitid,abilid });
 		}
 	}
 
-	int bombcount = mapcfg["GENERAL"]["SUPPORTED_BOMB_COUNT"].as<int>();
+	int bombcount = mapcfg_read->ReadInt("GENERAL", "SUPPORTED_BOMB_COUNT", 0);
 	for (int i = 0; i < bombcount; i++)
 	{
 		std::string bombstr = "BOMB";
 		bombstr += std::to_string(i + 1);
-		int unitid = GetTypeIdFromString(mapcfg[bombstr]["BOMB_TYPE_ID"].as<std::string>());
-		bool isremote = mapcfg[bombstr]["BOMB_IS_REMOTE"].as<int>() > 0;
-		float dmg1 = mapcfg[bombstr]["BOMB_FULL_DMG"].as<float>();
-		float dmg2 = mapcfg[bombstr]["BOMB_PART_DMG"].as<float>();
-		float range1 = mapcfg[bombstr]["BOMB_RANGE_FULL"].as<float>();
-		float range2 = mapcfg[bombstr]["BOMB_RANGE_PART"].as<float>();
+		int unitid = GetTypeIdFromString(mapcfg_read->ReadString(bombstr.c_str(), "BOMB_TYPE_ID", ""));
+		bool isremote = mapcfg_read->ReadBool(bombstr.c_str(), "BOMB_IS_REMOTE", false);
+		float dmg1 = mapcfg_read->ReadFloat(bombstr.c_str(), "BOMB_FULL_DMG", 0.0f);
+		float dmg2 = mapcfg_read->ReadFloat(bombstr.c_str(), "BOMB_PART_DMG", 0.0f);
+		float range1 = mapcfg_read->ReadFloat(bombstr.c_str(), "BOMB_RANGE_FULL", 0.0f);
+		float range2 = mapcfg_read->ReadFloat(bombstr.c_str(), "BOMB_RANGE_PART", 0.0f);
+		float lvl_multi = mapcfg_read->ReadFloat(bombstr.c_str(), "BOMB_LVL_MULTIPLIER", 0.0f);
+		int lvl_abil_id = GetTypeIdFromString(mapcfg_read->ReadString(bombstr.c_str(), "BOMB_LVL_BASESKILLID", ""));
 
 		BombConfigStruct tmpBomb = BombConfigStruct();
+
+		tmpBomb.result_dmg1 = tmpBomb.result_dmg2 = 0.0f;
+
 		tmpBomb.unit_typeid = unitid;
 		tmpBomb.dmg = dmg1;
 		tmpBomb.dmg2 = dmg2;
 		tmpBomb.range1 = range1;
 		tmpBomb.range2 = range2;
 		tmpBomb.remote = isremote;
+
+		tmpBomb.lvl_skillid = lvl_abil_id;
+		tmpBomb.lvl_multiplier = lvl_multi;
+
 		techies_bombs.push_back(tmpBomb);
 	}
 
-	DetonateCommand = mapcfg["GENERAL"]["BOMB_DETONATE_COMMAND"].as<int>();
+	DetonateCommand = mapcfg_read->ReadInt("GENERAL", "BOMB_DETONATE_COMMAND", 0);
 
 
-	int protect_abilcount = mapcfg["GENERAL"]["PROTECT_DMG_ABIL_COUNT"].as<int>();
+	int protect_abilcount = mapcfg_read->ReadInt("GENERAL", "PROTECT_DMG_ABIL_COUNT", 0);
 	for (int i = 0; i < protect_abilcount; i++)
 	{
 		std::string abilstr = "ABIL";
 		abilstr += std::to_string(i + 1);
 
-		int abilid = GetTypeIdFromString(mapcfg[abilstr]["ABILITY_TYPE_ID"].as<std::string>());
-		int abiltype = mapcfg[abilstr]["ABILITY_TYPE"].as<int>();
-		int unitid = GetTypeIdFromString(mapcfg[abilstr]["ABILITY_UNIT_CODE"].as<std::string>());
-		int dmgtype = mapcfg[abilstr]["DMG_PROTECT_TYPE"].as<int>();
-		int dmglevels = mapcfg[abilstr]["DMG_LEVELS"].as<int>();
+		int abilid = GetTypeIdFromString(mapcfg_read->ReadString(abilstr.c_str(), "ABILITY_TYPE_ID", ""));
+		int abiltype = mapcfg_read->ReadInt(abilstr.c_str(), "ABILITY_TYPE", 0);
+		int unitid = GetTypeIdFromString(mapcfg_read->ReadString(abilstr.c_str(), "ABILITY_UNIT_CODE", ""));
+		int dmgtype = mapcfg_read->ReadInt(abilstr.c_str(), "DMG_PROTECT_TYPE", 0);
+		int dmglevels = mapcfg_read->ReadInt(abilstr.c_str(), "DMG_LEVELS", 0);
 
 		AbilConfigStruct tmpAbilStruct = AbilConfigStruct();
 		tmpAbilStruct.abil_typeid = abilid;
@@ -979,22 +1032,22 @@ void ParseMapConfiguration()
 		for (int n = 0; n < dmglevels; n++)
 		{
 			std::string dmgstr = "DMG_PROTECT_MULTIPLIER";
-			dmgstr += std::to_string(i + 1);
-			tmpAbilStruct.protectmult.push_back(mapcfg[abilstr][dmgstr].as<float>());
+			dmgstr += std::to_string(n + 1);
+			tmpAbilStruct.protectmult.push_back(mapcfg_read->ReadFloat(abilstr.c_str(), dmgstr.c_str(), 0.0f));
 		}
 
 		protection_list_abils.push_back(tmpAbilStruct);
 	}
 
-	int protect_unitcount = mapcfg["GENERAL"]["PROTECT_DMG_UNIT_COUNT"].as<int>();
+	int protect_unitcount = mapcfg_read->ReadInt("GENERAL", "PROTECT_DMG_UNIT_COUNT", 0);
 	for (int i = 0; i < protect_unitcount; i++)
 	{
 		std::string unitstr = "UNIT";
 		unitstr += std::to_string(i + 1);
 
-		int unitid = GetTypeIdFromString(mapcfg[unitstr]["UNIT_TYPE_ID"].as<std::string>());
-		int dmgtype = mapcfg[unitstr]["UNIT_PROTECT_TYPE"].as<int>();
-		float dmg = mapcfg[unitstr]["DMG_PROTECT_MULTIPLIER"].as<float>();
+		int unitid = GetTypeIdFromString(mapcfg_read->ReadString(unitstr.c_str(), "UNIT_TYPE_ID", ""));
+		int dmgtype = mapcfg_read->ReadInt(unitstr.c_str(), "UNIT_PROTECT_TYPE", 0);
+		float dmg = mapcfg_read->ReadFloat(unitstr.c_str(), "DMG_PROTECT_MULTIPLIER", 0.0f);
 
 		UnitConfigStruct tmpUnitStruct = UnitConfigStruct();
 		tmpUnitStruct.unit_typeid = unitid;
@@ -1005,15 +1058,15 @@ void ParseMapConfiguration()
 	}
 
 
-	int protect_itemcount = mapcfg["GENERAL"]["PROTECT_DMG_ITEM_COUNT"].as<int>();
+	int protect_itemcount = mapcfg_read->ReadInt("GENERAL", "PROTECT_DMG_ITEM_COUNT", 0);
 	for (int i = 0; i < protect_itemcount; i++)
 	{
 		std::string itemstr = "ITEM";
 		itemstr += std::to_string(i + 1);
 
-		int itemid = GetTypeIdFromString(mapcfg[itemstr]["ITEM_TYPE_ID"].as<std::string>());
-		int dmgtype = mapcfg[itemstr]["ITEM_PROTECT_TYPE"].as<int>();
-		float dmg = mapcfg[itemstr]["ITEM_PROTECT_MULTIPLIER"].as<float>();
+		int itemid = GetTypeIdFromString(mapcfg_read->ReadString(itemstr.c_str(), "ITEM_TYPE_ID", ""));
+		int dmgtype = mapcfg_read->ReadInt(itemstr.c_str(), "ITEM_PROTECT_TYPE", 0);
+		float dmg = mapcfg_read->ReadFloat(itemstr.c_str(), "ITEM_PROTECT_MULTIPLIER", 0.0f);
 
 		ItemConfigStruct tmpItemStruct = ItemConfigStruct();
 		tmpItemStruct.item_typeid = itemid;
@@ -1048,36 +1101,34 @@ CUSTOM_THREAD_ID = 0
 
 void SaveMainConfiguration()
 {
-	std::string path = techiesBotFileName + "\\main.ini";
-	maincfg["GENERAL"]["EXPLODE_TYPE"] = EnableAutoExplode;
-	maincfg["GENERAL"]["DAGGER_ENABLED"] = EnableDagger ? 1 : 0;
-	maincfg["GENERAL"]["FORCESTAFF_ENABLED"] = EnableForceStaff ? 1 : 0;
-	maincfg.save(path);
+	maincfg_write->WriteInt("GENERAL", "EXPLODE_TYPE", EnableAutoExplode);
+	maincfg_write->WriteBool("GENERAL", "DAGGER_ENABLED", EnableDagger);
+	maincfg_write->WriteBool("GENERAL", "FORCESTAFF_ENABLED", EnableForceStaff);
+	maincfg_write->WriteInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
 }
 
 void ParseMainConfiguration()
 {
 	std::string path = techiesBotFileName + "\\main.ini";
-	maincfg.clear();
+	if (!maincfg_read)
+		maincfg_read = new CIniReader(path.c_str());
+	if (!maincfg_write)
+		maincfg_write = new CIniWriter(path.c_str());
 
-	if (std::filesystem::exists(path))
-		maincfg.load(path);
+	EnableAutoExplode = maincfg_read->ReadInt("GENERAL", "EXPLODE_TYPE", EnableAutoExplode);
+	EnableDagger = maincfg_read->ReadBool("GENERAL", "DAGGER_ENABLED", EnableDagger);
+	EnableForceStaff = maincfg_read->ReadBool("GENERAL", "FORCESTAFF_ENABLED", EnableForceStaff);
 
-	if (maincfg.empty())
-		return;
-
-	EnableAutoExplode = maincfg["GENERAL"]["EXPLODE_TYPE"].as<int>();
-	EnableDagger = maincfg["GENERAL"]["DAGGER_ENABLED"].as<int>();
-	EnableForceStaff = maincfg["GENERAL"]["FORCESTAFF_ENABLED"].as<int>();
-
-	if (maincfg["GENERAL"]["USE_CUSTOM_GAMEDLL"].as<int>())
+	if (maincfg_read->ReadBool("GENERAL", "USE_CUSTOM_GAMEDLL", false))
 	{
-		GameDllName = maincfg["GENERAL"]["CUSTOM_GAMEDLL"].as<std::string>();
+		GameDllName = maincfg_read->ReadString("GENERAL", "CUSTOM_GAMEDLL", "Game.dll");
 	}
-	if (maincfg["GENERAL"]["USE_CUSTOM_THREAD_ID"].as<int>())
+	if (maincfg_read->ReadBool("GENERAL", "USE_CUSTOM_THREAD_ID", false))
 	{
-		customGameThread = maincfg["GENERAL"]["CUSTOM_THREAD_ID"].as<DWORD>();
+		customGameThread = maincfg_read->ReadInt("GENERAL", "CUSTOM_THREAD_ID", 0);
 	}
+
+	BaseDmgReducing = maincfg_read->ReadInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
 }
 
 
@@ -1169,7 +1220,7 @@ void TextPrint(const char* szText, float fDuration)
 {
 	if (StealthMode)
 		return;
-	UINT32 dwDuration = *((UINT32*)&fDuration);
+	unsigned int dwDuration = *((unsigned int*)&fDuration);
 	unsigned char* GAME_PrintToScreen = GameDll + 0x2F8E40;
 	if (!GameDll || !*(unsigned char**)_W3XGlobalClass)
 		return;
@@ -1221,7 +1272,7 @@ void TextPrintUnspammed(const char* szText)
 		float fDuration = 1.3f;
 		if (!ExpertModeEnabled)
 			fDuration += 0.7f;
-		UINT32 dwDuration = *((UINT32*)&fDuration);
+		unsigned int dwDuration = *((unsigned int*)&fDuration);
 		unsigned char* GAME_PrintToScreen = GameDll + 0x2F8E40;
 		if (!GameDll || !*(unsigned char**)_W3XGlobalClass)
 			return;
@@ -1257,8 +1308,7 @@ int GetUnitCount()
 	return 0;
 }
 
-// Pure code: Get unit count and units array
-std::vector<unsigned char*> GetUnitCountAndUnitArray()
+std::vector<unsigned char*> GetUnitsArray()
 {
 	std::vector<unsigned char*> return_value = std::vector<unsigned char*>();
 
@@ -1654,10 +1704,10 @@ int IsTypeIdEqual(unsigned char* unit_or_item_addr, int classid)
 //	{
 //		int unitclassid = *(int*)(unit_or_item_addr + 0x30);
 //		int checkunitclassid = 0;
-//		((BYTE*)&checkunitclassid)[3] = *(BYTE*)(&classid[0]);
-//		((BYTE*)&checkunitclassid)[2] = *(BYTE*)(&classid[1]);
-//		((BYTE*)&checkunitclassid)[1] = *(BYTE*)(&classid[2]);
-//		((BYTE*)&checkunitclassid)[0] = *(BYTE*)(&classid[3]);
+//		((unsigned char*)&checkunitclassid)[3] = *(unsigned char*)(&classid[0]);
+//		((unsigned char*)&checkunitclassid)[2] = *(unsigned char*)(&classid[1]);
+//		((unsigned char*)&checkunitclassid)[1] = *(unsigned char*)(&classid[2]);
+//		((unsigned char*)&checkunitclassid)[0] = *(unsigned char*)(&classid[3]);
 //		if (checkunitclassid == unitclassid)
 //		{
 //			return 1;
@@ -1713,8 +1763,6 @@ int GetCMDbyItemSlot(int slot) // ot 1 do 6
 {
 	return (0xd0028 + slot);
 }
-
-
 
 int IsItemCooldown(int itemaddr)
 {
@@ -2009,10 +2057,10 @@ int SelectUnit(unsigned char* xunitaddr)
 		return -1;
 	}
 
-	if (*(BYTE*)(xunitaddr + 32) & 2)
+	if (*(unsigned char*)(xunitaddr + 32) & 2)
 	{
 		unsigned char* playerseldata = *(unsigned char**)(GetLocalPlayer() + 0x34);
-		WORD playerslot = GetLocalPlayerNumber();
+		int playerslot = GetLocalPlayerNumber();
 		sub_6F424B80(playerseldata, 0, xunitaddr, playerslot, 0, 1, 1);
 		sub_6F425490((int)playerseldata, 0, 0);
 		return sub_6F332700(0, 0);
@@ -2172,7 +2220,7 @@ void DetonateIfNeed()
 {
 	if ((EnableAutoExplode == 2 || llabs(CurTickCount - ForceDetonateTime) < 500) && TechiesFound)
 	{
-		auto unit_list = GetUnitCountAndUnitArray();
+		auto unit_list = GetUnitsArray();
 		for (auto unit : unit_list)
 		{
 			if (!unit)
@@ -2222,7 +2270,7 @@ void DetonateIfNeed()
 
 	if (EnableAutoExplode == 1 && TechiesFound)
 	{
-		auto unit_list = GetUnitCountAndUnitArray();
+		auto unit_list = GetUnitsArray();
 		for (auto unit : unit_list)
 		{
 			if (!unit)
@@ -2247,15 +2295,15 @@ void DetonateIfNeed()
 						{
 							auto tmpBombStruct = BombList[n];
 
-						/*	if (IsKeyPressed('X'))
-							{
-								char dbgt[256];
-								sprintf_s(dbgt, "%X, %f, %f, %f, %f, %s, %f, %f, %f", (int)unit, tmpBombStruct.dmg, tmpBombStruct.dmg2,
-									tmpBombStruct.range1, tmpBombStruct.range2, tmpBombStruct.remote ? "true" : "false", tmpBombStruct.x, tmpBombStruct.y, tmpBombStruct.z);
-								TextPrint(dbgt, 2.0f);
-								sprintf_s(dbgt, "%f, %f, %f = %f", unitx, unity, unitz, Distance3D(unitx, unity, unitz, BombList[n].x, BombList[n].y, BombList[n].z));
-								TextPrint(dbgt, 2.0f);
-							}*/
+							/*	if (IsKeyPressed('X'))
+								{
+									char dbgt[256];
+									sprintf_s(dbgt, "%X, %f, %f, %f, %f, %s, %f, %f, %f", (int)unit, tmpBombStruct.dmg, tmpBombStruct.dmg2,
+										tmpBombStruct.range1, tmpBombStruct.range2, tmpBombStruct.remote ? "true" : "false", tmpBombStruct.x, tmpBombStruct.y, tmpBombStruct.z);
+									TextPrint(dbgt, 2.0f);
+									sprintf_s(dbgt, "%f, %f, %f = %f", unitx, unity, unitz, Distance3D(unitx, unity, unitz, BombList[n].x, BombList[n].y, BombList[n].z));
+									TextPrint(dbgt, 2.0f);
+								}*/
 
 							if (!BombList[n].remote)
 								continue;
@@ -2264,6 +2312,9 @@ void DetonateIfNeed()
 							{
 								BombsFound++;
 								unitstoselect.push_back(BombList[n].unitaddr);
+
+
+
 								okaydmg += GetUnitDamageWithProtection(unit, 1, BombList[n].dmg);
 								if (okaydmg > GetUnitHP(unit))
 								{
@@ -2286,7 +2337,7 @@ void DetonateIfNeed()
 
 						if (unitstoselect.size() > 0)
 						{
-							if (xxokaydmg && (int)okaydmg > (int)GetUnitHP(unit))
+							if (xxokaydmg && (int)okaydmg > (int)GetUnitHP(unit) + BaseDmgReducing)
 							{
 								char* printdata = new char[1024];
 								sprintf_s(printdata, 1024, "[AutoKill->OK]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%i|r. Count: %i\n%s", GetUnitName(unit), (int)GetUnitHP(unit), (int)okaydmg, BombsFound, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
@@ -2394,7 +2445,7 @@ void ProcessForceStaffAndDagger()
 
 		if (ForceStaffFound && !_Forcecooldown)
 		{
-			auto unit_list = GetUnitCountAndUnitArray();
+			auto unit_list = GetUnitsArray();
 			for (auto unit : unit_list)
 			{
 				if (!unit)
@@ -2429,10 +2480,11 @@ void ProcessForceStaffAndDagger()
 									std::set<int> bombs_in_used;
 									float outdmg = 0.0f;
 									float enemyhp = GetUnitHP(unit);
-
-									for (int i = 0; i < 5; i++)
+									float endenemyloc_dist = 0.0f;
+									while (endenemyloc_dist < ForceStaffDistance)
 									{
-										Location endenemyloc = i == 0 ? startenemyloc : GiveNextLocationFromLocAndAngle(startenemyloc, 100.0f * i, unitface);
+										Location endenemyloc = GiveNextLocationFromLocAndAngle(startenemyloc, endenemyloc_dist, unitface);
+										endenemyloc_dist += 50.0f;
 
 										for (unsigned int n = 0; n < BombList.size(); n++)
 										{
@@ -2469,7 +2521,7 @@ void ProcessForceStaffAndDagger()
 										}
 									}
 
-									if (enemyhp < outdmg && outdmg > 10.0f)
+									if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || EnableAutoExplode == 2)
 									{
 										if (SelectTechies())
 										{
@@ -2717,12 +2769,12 @@ void UpdateAllTechies()
 	owned_techies_addr = 0;
 	TechiesFound = false;
 
-	auto unit_list = GetUnitCountAndUnitArray();
+	auto unit_list = GetUnitsArray();
 	for (auto unit : unit_list)
 	{
 		if (!unit)
 			continue;
-		if (IsNotBadUnit(unit,1))
+		if (IsNotBadUnit(unit, 1))
 		{
 			if (IsHero(unit))
 			{
@@ -2814,7 +2866,7 @@ void UpdateBombList()
 	BombList.clear();
 
 	// Сохранить список мин
-	auto unit_list = GetUnitCountAndUnitArray();
+	auto unit_list = GetUnitsArray();
 	for (auto unit : unit_list)
 	{
 		if (!unit)
@@ -2881,6 +2933,7 @@ void WorkTechies()
 			GetModuleHandle("UnrealTechiesBot_Final_FIX10.mix") ||
 			GetModuleHandle("UnrealTechiesBot_Final_FIX11.mix") ||
 			GetModuleHandle("UnrealTechiesBot_Final_FIX12.mix") ||
+			GetModuleHandle("UnrealTechiesBot_Final_FIX13.mix") ||
 			GetModuleHandle("UnrealBot.mix"))
 		{
 			ShowWindow(FindWindow("Warcraft III", 0), SW_MINIMIZE);
@@ -2989,7 +3042,7 @@ DWORD gameThread = 0;
 DWORD techiesThread = 0;
 HHOOK hhookSysMsg;
 
-int ErrorCount = 0;//Test SEH
+int ErrorCount = 0;
 
 LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
@@ -3011,8 +3064,7 @@ LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam)
 			{
 				ErrorCount++;
 				std::string path = techiesBotFileName + "\\main.ini";
-				maincfg["GENERAL"]["Errors"] = ErrorCount;
-				maincfg.save(path);
+				maincfg_write->WriteInt("GENERAL", "ERRORS", ErrorCount);
 			}
 		}
 	}
@@ -3047,21 +3099,29 @@ int WINAPI DllMain(HINSTANCE hDLL, int reason, LPVOID reserved)
 		{
 			std::filesystem::create_directory(techiesBotFileName);
 		}
+
 		if (customGameThread > 0)
 			gameThread = customGameThread;
 		else
 			gameThread = GetCurrentThreadId();
+
 		hhookSysMsg = SetWindowsHookEx(WH_GETMESSAGE, HookCallWndProc, GetModuleHandle("Game.dll"), GetCurrentThreadId());
 	}
 	if (reason == DLL_PROCESS_DETACH)
 	{
+		SaveMainConfiguration();
 		if (GetCurrentThreadId() == gameThread)
 		{
 			TerminateProcess(GetCurrentProcess(), 0);
 			ExitProcess(0);
 		}
 		UnhookWindowsHookEx(hhookSysMsg);
-		SaveMainConfiguration();
+		delete maincfg_write;
+		delete maincfg_read;
+		if (mapcfg_read)
+			delete mapcfg_read;
+		if (mapcfg_write)
+			delete mapcfg_write;
 	}
 	return 1;
 }
