@@ -33,6 +33,9 @@ int GetObjectTypeId(unsigned char* unit_or_item_addr);
 void TextPrint(const char* szText, float fDuration);
 int GetUnitOwnerSlot(unsigned char* unitaddr);
 std::vector<unsigned char*> GetUnitsArray();
+int GetLocalPlayerNumber();
+bool IsHero(unsigned char* unitaddr);
+std::vector<unsigned char*> GetOwnerHeroesArray();
 
 std::string techiesBotFileName = "techies";
 
@@ -60,8 +63,8 @@ int DebugActive = 0;
 
 unsigned char* forceunitaddr = 0;
 
-unsigned char* any_techies_addr = 0;
-unsigned char* owned_techies_addr = 0;
+bool ANY_TECHIES_FOUND = false;
+
 
 std::vector<unsigned char*> unitstoselect;
 
@@ -84,7 +87,6 @@ char TechiesCrash[150];
 bool ExpertModeEnabled = false;
 bool Enable3DPoint = true;
 bool StealthMode = false;
-bool TechiesFound = false;
 
 
 struct BombStruct
@@ -160,6 +162,8 @@ struct TechiesUnitAbilStr
 	int unitid;
 	int abilid;
 };
+
+bool RemoteTechiesFound = false;
 
 std::vector<TechiesUnitAbilStr> techies_ids;
 
@@ -301,12 +305,12 @@ float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, float
 
 	if (!IsNotBadUnit(unitaddr, 1))
 	{
-		return 0.2f;
+		return 0.0f;
 	}
 
 	if (!IsNotBadUnit(unitaddr))
 	{
-		return 0.1f;
+		return 0.0f;
 	}
 
 	if (IsUnitProtected(unitaddr, damagetype, PrintBuffListStr))
@@ -473,12 +477,16 @@ bool GetBombStructFromCfg(unsigned char* unitaddr, BombStruct& tmpBombStruct)
 	int input_owner = GetUnitOwnerSlot(unitaddr);
 	for (auto& bomb : techies_bombs)
 	{
-		// ignore remote bombs if techies not owned
-		if (bomb.remote && !TechiesFound)
-			continue;
-		//
 		if (input_typeid == bomb.unit_typeid)
 		{
+			// ignore remote bombs if techies not owned
+			if (bomb.remote)
+			{
+				if (input_owner != GetLocalPlayerNumber())
+					continue;
+				RemoteTechiesFound = true;
+			}
+
 			tmpBombStruct = BombStruct();
 			tmpBombStruct.unitaddr = unitaddr;
 			tmpBombStruct.dmg = bomb.dmg;
@@ -491,23 +499,16 @@ bool GetBombStructFromCfg(unsigned char* unitaddr, BombStruct& tmpBombStruct)
 
 			if (bomb.lvl_skillid != 0)
 			{
-				auto units = GetUnitsArray();
+				auto units = GetOwnerHeroesArray();
 				for (auto unit : units)
 				{
-					if (!IsNotBadUnit(unit, 1))
-						continue;
-
-					int cur_owner = GetUnitOwnerSlot(unit);
-					if (input_owner == cur_owner)
+					int abillevel = GetUnitAbilityLevel(unit, bomb.lvl_skillid);
+					if (abillevel > 0)
 					{
-						int abillevel = GetUnitAbilityLevel(unit, bomb.lvl_skillid);
-						if (abillevel > 0)
-						{
-							float outmultiplier = bomb.lvl_multiplier * abillevel;
-							tmpBombStruct.dmg = tmpBombStruct.dmg * outmultiplier;
-							tmpBombStruct.dmg2 = tmpBombStruct.dmg2 * outmultiplier;
-							break;
-						}
+						float outmultiplier = bomb.lvl_multiplier * abillevel;
+						tmpBombStruct.dmg = tmpBombStruct.dmg + outmultiplier;
+						tmpBombStruct.dmg2 = tmpBombStruct.dmg2 + outmultiplier;
+						break;
 					}
 				}
 			}
@@ -809,23 +810,36 @@ void LoadDefaultDotaConfiguration()
 
 	// rubik 3 skill
 	tmpBomb.unit_typeid = 'h0EG';
-	tmpBomb.dmg = 150.0f;
-	tmpBomb.dmg2 = 150.0f;
+	tmpBomb.dmg = 100.0f;
+	tmpBomb.dmg2 = 100.0f;
 	tmpBomb.range1 = 375.0f;
 	tmpBomb.range2 = 375.0f;
 	tmpBomb.remote = false;
-	tmpBomb.lvl_skillid = '5';
+	tmpBomb.lvl_multiplier = 50.0f;
+	tmpBomb.lvl_skillid = 'A2LL';
 	techies_bombs.push_back(tmpBomb);
 
 	// Storm 1 skill 
 	tmpBomb.unit_typeid = 'h07F';
-	tmpBomb.dmg = 140.0f;
-	tmpBomb.dmg2 = 140.0f;
+	tmpBomb.dmg = 100.0f;
+	tmpBomb.dmg2 = 100.0f;
 	tmpBomb.range1 = 235.0f;
 	tmpBomb.range2 = 235.0f;
 	tmpBomb.remote = false;
-	tmpBomb.lvl_skillid = '5';
+	tmpBomb.lvl_multiplier = 40.0f;
+	tmpBomb.lvl_skillid = 'A14P';
 	techies_bombs.push_back(tmpBomb);
+
+	//  1 skill 
+	/*tmpBomb.unit_typeid = 'h07U';
+	tmpBomb.dmg = 30.0f;
+	tmpBomb.dmg2 = 30.0f;
+	tmpBomb.range1 = 200.0f;
+	tmpBomb.range2 = 200.0f;
+	tmpBomb.remote = false;
+	tmpBomb.lvl_multiplier = 30.0f;
+	tmpBomb.lvl_skillid = 'A21J';
+	techies_bombs.push_back(tmpBomb);*/
 }
 
 int GetTypeIdFromString(std::string type_id)
@@ -1339,6 +1353,52 @@ std::vector<unsigned char*> GetUnitsArray()
 						}
 					}
 
+					return return_value;
+				}
+				else
+				{
+					return return_value;
+				}
+			}
+		}
+	}
+	return return_value;
+}
+
+std::vector<unsigned char*> GetOwnerHeroesArray()
+{
+	std::vector<unsigned char*> return_value = std::vector<unsigned char*>();
+
+
+	int GlobalClassOffset = *(int*)(_W3XGlobalClass);
+	if (GlobalClassOffset)
+	{
+		int UnitsOffset1 = *(int*)(GlobalClassOffset + 0x3BC);
+		if (UnitsOffset1 > 0)
+		{
+			int* UnitsCountAddr = (int*)(UnitsOffset1 + 0x604);
+			if (*(int*)UnitsCountAddr > 0)
+			{
+				int UnitsCount = *(int*)UnitsCountAddr;
+				if (IsOkayPtr((unsigned char*)(UnitsOffset1 + 0x608)) && *(int*)(UnitsOffset1 + 0x608) > 0)
+				{
+					unsigned char** unitarray = (unsigned char**)*(int*)(UnitsOffset1 + 0x608);
+
+					if (UnitsCount > 0 && unitarray)
+					{
+						std::set<unsigned char*> addrs;
+						for (int i = 0; i < UnitsCount; i++)
+						{
+							if (addrs.count(unitarray[i]))
+								continue;
+
+							if (IsNotBadUnit(unitarray[i]) && GetUnitOwnerSlot(unitarray[i]) == GetLocalPlayerNumber() && IsHero(unitarray[i]))
+							{
+								addrs.insert(unitarray[i]);
+								return_value.push_back(unitarray[i]);
+							}
+						}
+					}
 					return return_value;
 				}
 				else
@@ -2191,34 +2251,33 @@ int __cdecl IsUnitVisibleToPlayer(unsigned char* unitaddr, unsigned char* player
 }
 
 
-int SelectTechies()
+bool SelectTechies()
 {
-	int returnvalue = 0;
-	if (owned_techies_addr && TechiesFound)
-	{
-		if (GetSelectedOwnedUnit() == owned_techies_addr)
-			return 1;
+	auto units = GetOwnerHeroesArray();
 
-		if (IsNotBadUnit(owned_techies_addr))
+	if (std::find(units.begin(), units.end(), GetSelectedOwnedUnit()) != units.end())
+		return true;
+
+	for (auto unit : units)
+	{
+		if (IsNotBadUnit(unit) && IsHero(unit))
 		{
 			unitstoselect.clear();
-			unitstoselect.push_back(owned_techies_addr);
-			returnvalue = SelectAllUnits();
+			unitstoselect.push_back(unit);
+			int selected = SelectAllUnits();
 			unitstoselect.clear();
-		}
-		else
-		{
-			if (!IsNotBadUnit(owned_techies_addr, 1) && !IsHero(owned_techies_addr))
-				owned_techies_addr = 0;
+			if (selected > 0)
+			{
+				return true;
+			}
 		}
 	}
-
-	return returnvalue;
+	return false;
 }
 
 void DetonateIfNeed()
 {
-	if ((EnableAutoExplode == 2 || llabs(CurTickCount - ForceDetonateTime) < 500) && TechiesFound)
+	if (EnableAutoExplode == 2 || llabs(CurTickCount - ForceDetonateTime) < 500)
 	{
 		auto unit_list = GetUnitsArray();
 		for (auto unit : unit_list)
@@ -2268,7 +2327,7 @@ void DetonateIfNeed()
 		}
 	}
 
-	if (EnableAutoExplode == 1 && TechiesFound)
+	if (EnableAutoExplode == 1)
 	{
 		auto unit_list = GetUnitsArray();
 		for (auto unit : unit_list)
@@ -2371,182 +2430,199 @@ void DetonateIfNeed()
 
 void ProcessForceStaffAndDagger()
 {
-	if (EnableForceStaff)
+	if (!EnableForceStaff)
+		return;
+
+	unsigned char* force_unit = 0;
+
+	auto units = GetOwnerHeroesArray();
+
+	for (auto unit : units)
 	{
-		int ForceStaffFound = 0;
-		int forcestaffitemid = 0;
-		unsigned char* itemaddr = 0;
 		for (int i = 0; i < 6; i++)
 		{
-			itemaddr = GetItemInSlot(owned_techies_addr, i);
+			unsigned char* itemaddr = GetItemInSlot(unit, i);
 			if (itemaddr && IsTypeIdEqual(itemaddr, ForceStaffItemId))
 			{
-				if (IsAbilityCooldown(owned_techies_addr, ForceStaffAbilId))
+				force_unit = unit;
+				break;
+			}
+		}
+	}
+
+	if (!force_unit)
+		return;
+
+	int ForceStaffFound = 0;
+	int forcestaffitemid = 0;
+	unsigned char* itemaddr = 0;
+	for (int i = 0; i < 6; i++)
+	{
+		itemaddr = GetItemInSlot(force_unit, i);
+		if (itemaddr && IsTypeIdEqual(itemaddr, ForceStaffItemId))
+		{
+			if (IsAbilityCooldown(force_unit, ForceStaffAbilId))
+			{
+				if (!_Forcecooldown)
 				{
-					if (!_Forcecooldown)
+					TextPrint("|cFFFF6700F|r|cFFFE6401o|r|cFFFD6102r|r|cFFFC5E03c|r|cFFFB5A04e|r|cFFFA5705s|r|cFFF95406t|r|cFFF95107a|r|cFFF84E08f|r|cFFF74B09f|r|cFFF6470A |r|cFFF5440Bc|r|cFFF4410Co|r|cFFF33E0Co|r|cFFF23B0Dl|r|cFFF1380Ed|r|cFFF0340Fo|r|cFFEF3110w|r|cFFEE2E11n|r|cFFEE2B12 |r|cFFED2813s|r|cFFEC2514t|r|cFFEB2115a|r|cFFEA1E16r|r|cFFE91B17t|r|cFFE81818.|r", 3.0f);
+					_Forcecooldown = 1;
+				}
+			}
+			else
+			{
+				if (_Forcecooldown)
+				{
+					_Forcecooldown = 0;
+					TextPrint("|cFF21FF00F|r|cFF31FF00o|r|cFF42FF00r|r|cFF52FF00c|r|cFF63FF00e|r|cFF73FF00s|r|cFF84FF00t|r|cFF94FF00a|r|cFFA5FF00f|r|cFFB5FF00f|r|cFFC6FF00 |r|cFFD6FF00co|r|cFFC6FF00o|r|cFFB5FF00l|r|cFFA5FF00d|r|cFF94FF00o|r|cFF84FF00w|r|cFF73FF00n|r|cFF63FF00 |r|cFF52FF00e|r|cFF42FF00n|r|cFF31FF00d|r|cFF21FF00.|r", 3.0f);
+				}
+				ForceStaffFound = 1;
+				forcestaffitemid = i;
+			}
+
+			break;
+		}
+	}
+
+	bool DaggerFound = false;
+	int daggeritemid = 0;
+	unsigned char* daggeritemaddr = 0;
+
+	if (!EnableDagger)
+	{
+
+	}
+	else
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			daggeritemaddr = GetItemInSlot(force_unit, i);
+			if (daggeritemaddr && IsTypeIdEqual(daggeritemaddr, DaggerItemId))
+			{
+				if (IsAbilityCooldown(force_unit, DaggerAbilId))
+				{
+					if (!_Daggercooldown)
 					{
-						TextPrint("|cFFFF6700F|r|cFFFE6401o|r|cFFFD6102r|r|cFFFC5E03c|r|cFFFB5A04e|r|cFFFA5705s|r|cFFF95406t|r|cFFF95107a|r|cFFF84E08f|r|cFFF74B09f|r|cFFF6470A |r|cFFF5440Bc|r|cFFF4410Co|r|cFFF33E0Co|r|cFFF23B0Dl|r|cFFF1380Ed|r|cFFF0340Fo|r|cFFEF3110w|r|cFFEE2E11n|r|cFFEE2B12 |r|cFFED2813s|r|cFFEC2514t|r|cFFEB2115a|r|cFFEA1E16r|r|cFFE91B17t|r|cFFE81818.|r", 3.0f);
-						_Forcecooldown = 1;
+						TextPrint("|cFFFF6700D|r|cFFFE6301a|r|cFFFD5F02g|r|cFFFC5C03g|r|cFFFB5805e|r|cFFFA5406r|r|cFFF85007 |r|cFFF74D08c|r|cFFF64909o|r|cFFF5450Ao|r|cFFF4410Bl|r|cFFF33E0Dd|r|cFFF23A0Eo|r|cFFF1360Fw|r|cFFF03210n|r|cFFEF2F11 |r|cFFED2B12s|r|cFFEC2713t|r|cFFEB2315a|r|cFFEA2016r|r|cFFE91C17t|r|cFFE81818.|r", 3.0f);
+						_Daggercooldown = 1;
 					}
 				}
 				else
 				{
-					if (_Forcecooldown)
+					if (_Daggercooldown)
 					{
-						_Forcecooldown = 0;
-						TextPrint("|cFF21FF00F|r|cFF31FF00o|r|cFF42FF00r|r|cFF52FF00c|r|cFF63FF00e|r|cFF73FF00s|r|cFF84FF00t|r|cFF94FF00a|r|cFFA5FF00f|r|cFFB5FF00f|r|cFFC6FF00 |r|cFFD6FF00co|r|cFFC6FF00o|r|cFFB5FF00l|r|cFFA5FF00d|r|cFF94FF00o|r|cFF84FF00w|r|cFF73FF00n|r|cFF63FF00 |r|cFF52FF00e|r|cFF42FF00n|r|cFF31FF00d|r|cFF21FF00.|r", 3.0f);
+						_Daggercooldown = 0;
+						TextPrint("|cFF21FF00D|r|cFF35FF00a|r|cFF49FF00g|r|cFF5DFF00g|r|cFF71FF00e|r|cFF86FF00r|r|cFF9AFF00 |r|cFFAEFF00c|r|cFFC2FF00o|r|cFFD6FF00ol|r|cFFC2FF00d|r|cFFAEFF00o|r|cFF9AFF00w|r|cFF86FF00n|r|cFF71FF00 |r|cFF5DFF00e|r|cFF49FF00n|r|cFF35FF00d|r|cFF21FF00.|r", 3.0f);
 					}
-					ForceStaffFound = 1;
-					forcestaffitemid = i;
-				}
 
+					DaggerFound = true;
+					daggeritemid = i;
+				}
 				break;
 			}
 		}
+	}
 
-		bool DaggerFound = false;
-		int daggeritemid = 0;
-		unsigned char* daggeritemaddr = 0;
-
-		if (!EnableDagger)
+	if (ForceStaffFound && !_Forcecooldown)
+	{
+		auto unit_list = GetUnitsArray();
+		for (auto unit : unit_list)
 		{
-
-		}
-		else
-		{
-			for (int i = 0; i < 6; i++)
+			if (!unit)
+				continue;
+			if (IsNotBadUnit(unit) && IsHero(unit))
 			{
-				daggeritemaddr = GetItemInSlot(owned_techies_addr, i);
-				if (daggeritemaddr && IsTypeIdEqual(daggeritemaddr, DaggerItemId))
+				if (GetLocalPlayerNumber() != GetUnitOwnerSlot(unit))
 				{
-					if (IsAbilityCooldown(owned_techies_addr, DaggerAbilId))
+					if (IsPlayerEnemy(unit) && IsUnitVisibleToPlayer(unit, GetLocalPlayer()))
 					{
-						if (!_Daggercooldown)
-						{
-							TextPrint("|cFFFF6700D|r|cFFFE6301a|r|cFFFD5F02g|r|cFFFC5C03g|r|cFFFB5805e|r|cFFFA5406r|r|cFFF85007 |r|cFFF74D08c|r|cFFF64909o|r|cFFF5450Ao|r|cFFF4410Bl|r|cFFF33E0Dd|r|cFFF23A0Eo|r|cFFF1360Fw|r|cFFF03210n|r|cFFEF2F11 |r|cFFED2B12s|r|cFFEC2713t|r|cFFEB2315a|r|cFFEA2016r|r|cFFE91C17t|r|cFFE81818.|r", 3.0f);
-							_Daggercooldown = 1;
-						}
-					}
-					else
-					{
-						if (_Daggercooldown)
-						{
-							_Daggercooldown = 0;
-							TextPrint("|cFF21FF00D|r|cFF35FF00a|r|cFF49FF00g|r|cFF5DFF00g|r|cFF71FF00e|r|cFF86FF00r|r|cFF9AFF00 |r|cFFAEFF00c|r|cFFC2FF00o|r|cFFD6FF00ol|r|cFFC2FF00d|r|cFFAEFF00o|r|cFF9AFF00w|r|cFF86FF00n|r|cFF71FF00 |r|cFF5DFF00e|r|cFF49FF00n|r|cFF35FF00d|r|cFF21FF00.|r", 3.0f);
-						}
+						float unitface = GetUnitFacing(unit);
 
-						DaggerFound = true;
-						daggeritemid = i;
-					}
-					break;
-				}
-			}
-		}
+						float targetunitx = 0.0f, targetunity = 0.0f, targetunitz = 0.0f;
+						GetUnitLocation3D(unit, targetunitx, targetunity, targetunitz);
 
-		if (ForceStaffFound && !_Forcecooldown)
-		{
-			auto unit_list = GetUnitsArray();
-			for (auto unit : unit_list)
-			{
-				if (!unit)
-					continue;
-				if (IsNotBadUnit(unit))
-				{
-					if (IsHero(unit))
-					{
-						if (GetLocalPlayerNumber() != GetUnitOwnerSlot(unit))
+						float techiesunitx = 0.0f, techiesunity = 0.0f, techiesunitz = 0.0f;
+						GetUnitLocation3D(force_unit, techiesunitx, techiesunity, techiesunitz);
+
+						if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance || (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < (ForceStaffDistance + DaggerDistance)))
 						{
-							if (IsPlayerEnemy(unit) && IsUnitVisibleToPlayer(unit, GetLocalPlayer()))
+							if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance)
 							{
-								float unitface = GetUnitFacing(unit);
+								DaggerFound = false;
+							}
 
-								float targetunitx = 0.0f, targetunity = 0.0f, targetunitz = 0.0f;
-								GetUnitLocation3D(unit, targetunitx, targetunity, targetunitz);
+							Location startenemyloc = Location();
+							startenemyloc.X = targetunitx;
+							startenemyloc.Y = targetunity;
 
-								float techiesunitx = 0.0f, techiesunity = 0.0f, techiesunitz = 0.0f;
-								GetUnitLocation3D(owned_techies_addr, techiesunitx, techiesunity, techiesunitz);
+							std::set<int> bombs_in_used;
+							float outdmg = 0.0f;
+							float enemyhp = GetUnitHP(unit);
+							float endenemyloc_dist = 0.0f;
+							while (endenemyloc_dist < ForceStaffDistance)
+							{
+								Location endenemyloc = GiveNextLocationFromLocAndAngle(startenemyloc, endenemyloc_dist, unitface);
+								endenemyloc_dist += 50.0f;
 
-								if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance || (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < (ForceStaffDistance + DaggerDistance)))
+								for (unsigned int n = 0; n < BombList.size(); n++)
 								{
-									if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance)
+									if (bombs_in_used.count(n))
+										continue;
+									/*if ( IsIgnoreUnit( BombList[ n ].unitaddr ) )
+									continue;*/
+									if (!BombList[n].remote)
 									{
-										DaggerFound = false;
-									}
-
-									Location startenemyloc = Location();
-									startenemyloc.X = targetunitx;
-									startenemyloc.Y = targetunity;
-
-									std::set<int> bombs_in_used;
-									float outdmg = 0.0f;
-									float enemyhp = GetUnitHP(unit);
-									float endenemyloc_dist = 0.0f;
-									while (endenemyloc_dist < ForceStaffDistance)
-									{
-										Location endenemyloc = GiveNextLocationFromLocAndAngle(startenemyloc, endenemyloc_dist, unitface);
-										endenemyloc_dist += 50.0f;
-
-										for (unsigned int n = 0; n < BombList.size(); n++)
+										if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 										{
-											if (bombs_in_used.count(n))
-												continue;
-											/*if ( IsIgnoreUnit( BombList[ n ].unitaddr ) )
-											continue;*/
-											if (!BombList[n].remote)
-											{
-												if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
-												{
-													outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
-													bombs_in_used.insert(n);
-												}
-												else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
-												{
-													outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
-													bombs_in_used.insert(n);
-												}
-											}
-											else if (TechiesFound)
-											{
-												if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
-												{
-													outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
-													bombs_in_used.insert(n);
-												}
-												else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
-												{
-													outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
-													bombs_in_used.insert(n);
-												}
-											}
+											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
+											bombs_in_used.insert(n);
+										}
+										else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+										{
+											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
+											bombs_in_used.insert(n);
 										}
 									}
-
-									if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || EnableAutoExplode == 2)
+									else if (GetLocalPlayerNumber() == GetUnitOwnerSlot(BombList[n].unitaddr))
 									{
-										if (SelectTechies())
+										if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 										{
-											int scmd = GetCMDbyItemSlot(forcestaffitemid);
+											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
+											bombs_in_used.insert(n);
+										}
+										else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+										{
+											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
+											bombs_in_used.insert(n);
+										}
+									}
+								}
+							}
 
-											if (IsNotBadUnit(unit))
-											{
-												if (DaggerFound)
-												{
-													int dagcmd = GetCMDbyItemSlot(daggeritemid);
+							if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || EnableAutoExplode == 2)
+							{
+								if (SelectTechies())
+								{
+									int scmd = GetCMDbyItemSlot(forcestaffitemid);
 
-													ItemOrSkillPoint(dagcmd, daggeritemaddr, targetunitx + 1.0f, targetunity - 1.0f, 0x100002);
-													CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit, 1);
+									if (IsNotBadUnit(unit))
+									{
+										if (DaggerFound)
+										{
+											int dagcmd = GetCMDbyItemSlot(daggeritemid);
 
-													ForceDetonateTime = CurTickCount;
-													forceunitaddr = unit;
-												}
-												else
-												{
-													ForceDetonateTime = CurTickCount;
-													forceunitaddr = unit;
+											ItemOrSkillPoint(dagcmd, daggeritemaddr, targetunitx + 1.0f, targetunity - 1.0f, 0x100002);
+											CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit, 1);
 
-													CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit);
-												}
-											}
+											ForceDetonateTime = CurTickCount;
+											forceunitaddr = unit;
+										}
+										else
+										{
+											ForceDetonateTime = CurTickCount;
+											forceunitaddr = unit;
+
+											CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit);
 										}
 									}
 								}
@@ -2561,7 +2637,7 @@ void ProcessForceStaffAndDagger()
 
 void ProcessHotkeys()
 {
-	if (TechiesFound)
+	if (RemoteTechiesFound)
 	{
 		// X + 1
 		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
@@ -2584,6 +2660,14 @@ void ProcessHotkeys()
 			{
 				TextPrint("AutoExplode: |cFFFF0000Disabled|r ", 3.0f);
 			}
+		}
+	}
+	else
+	{
+		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
+		{
+			IsHotkeyPress = true;
+			TextPrint("AutoExplode: |cFFEF2020No hero with access|r", 3.0f);
 		}
 	}
 	// X + 2
@@ -2616,102 +2700,15 @@ void ProcessHotkeys()
 			TextPrint("Dagger: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
-	/*	if (ExpertModeEnabled)
-		{*/
-		// X + 4
-	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x34))
-	{
-		IsHotkeyPress = true;
-
-		/*bool tempbool = !StealthMode;
-
-		StealthMode = true;
-
-
-		if (tempbool)
-		{
-			TextPrint("Stealt hMode : |cFF00FF00ENABLED|r", 3.0f);
-		}
-		else if (!tempbool)
-		{
-			TextPrint("Stealth Mode : |cFFFF0000DISABLED|r", 3.0f);
-		}
-
-		StealthMode = tempbool;*/
-		/*char debugMsg[256];
-		sprintf_s(debugMsg, "General info: Any Techies : %X. Owned Techies : %X. Ally Techies Found: %s. Bombs: %u. Avaiabled: %u.", (int)any_techies_addr, (int)owned_techies_addr, TechiesFound ? "true" : "false", techies_bombs.size(), BombList.size());
-		TextPrint(debugMsg, 4.0f);
-		sprintf_s(debugMsg, "Protect list: Units: %u. Abils: %u. Items: %u.", protection_list_units.size(), protection_list_abils.size(), protection_list_items.size());
-		TextPrint(debugMsg, 4.0f);*/
-	}
 	// X + 5
-	/*if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x35))
+	if (IsKeyPressed('X') && IsKeyPressed(0x35) && RemoteTechiesFound)
 	{
+		if (!IsHotkeyPress)
+		{
+			TextPrint("Remote mouse: |cFFFF0000HOLD AND MOVE CURSOR TO DETONATE|r", 3.0f);
+		}
+
 		IsHotkeyPress = true;
-		UseWarnIsBadReadPtr = 3;
-
-		if (UseWarnIsBadReadPtr == 2)
-		{
-			TextPrint("[SLOW BUT STABLE]|cFFFFCC00Use VirtualQuery to detect bad memory!|r", 3.0f);
-		}
-		else if (UseWarnIsBadReadPtr == 1)
-		{
-			TextPrint("[FAST]|cFFFF5B00Use IsBadReadPtr (__try -catch) to detect bad memory!|r", 3.0f);
-		}
-		else if (UseWarnIsBadReadPtr == 3)
-		{
-			TextPrint("[VERY FAST]|cFFFF0000Disable bad memory detection!|r", 3.0f);
-		}
-	}*/
-
-	// X + 6
-	//if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x36))
-	//{
-	//	IsHotkeyPress = true;
-	//	//if (!DisableWindowActiveCheck)
-	//	//{
-	//	TextPrint("Work only when window active : |cFF00FF00ENABLED|r", 3.0f);
-	//	//}
-	//	//else if (DisableWindowActiveCheck)
-	//	//{
-	//	//	TextPrint("Work only when window active : |cFFFF0000DISABLED|r", 3.0f);
-	//	//}
-	//}
-
-	// X + 7
-	/*if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x37))
-	{
-		IsHotkeyPress = true;
-		Enable3DPoint = !Enable3DPoint;
-
-		if (Enable3DPoint)
-		{
-			TextPrint("3D Point System : |cFF00FF00ENABLED|r", 3.0f);
-		}
-		else if (!Enable3DPoint)
-		{
-			TextPrint("3D Point System : |cFFFF0000DISABLED|r", 3.0f);
-		}
-	}*/
-
-	// X + 9
-	/*if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x39))
-	{
-		IsHotkeyPress = true;
-		FunModeEnabled = !FunModeEnabled;
-
-		if (FunModeEnabled)
-		{
-			TextPrint("Fun mode: |cFF00FF00ENABLED|r", 3.0f);
-		}
-		else if (!FunModeEnabled)
-		{
-			TextPrint("Fun mode: |cFFFF0000DISABLED|r", 3.0f);
-		}
-	}*/
-	// X + 5
-	if (IsKeyPressed('X') && IsKeyPressed(0x35) && TechiesFound)
-	{
 		float x = 0;
 		float y = 0;
 		float z = 0;
@@ -2740,124 +2737,6 @@ void ProcessHotkeys()
 			SelectTechies();
 		}
 	}
-	//}
-
-	//// X + 8
-	//if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x38))
-	//{
-	//	IsHotkeyPress = true;
-	//	ExpertModeEnabled = !ExpertModeEnabled;
-
-	//	if (ExpertModeEnabled)
-	//	{
-	//		TextPrint("Expert mode: |cFF00FF00ENABLED|r", 3.0f);
-	//	}
-	//	else if (!ExpertModeEnabled)
-	//	{
-	//		TextPrint("Expert mode: |cFFFF0000DISABLED|r", 3.0f);
-	//	}
-	//}
-}
-
-bool TechiesFoundPrinted = false;
-
-void UpdateAllTechies()
-{
-	bool something_printed = false;
-
-	any_techies_addr = 0;
-	owned_techies_addr = 0;
-	TechiesFound = false;
-
-	auto unit_list = GetUnitsArray();
-	for (auto unit : unit_list)
-	{
-		if (!unit)
-			continue;
-		if (IsNotBadUnit(unit, 1))
-		{
-			if (IsHero(unit))
-			{
-				bool abilFound = false;
-				for (auto& tech : techies_ids)
-				{
-					if (GetUnitAbilityLevel(unit, tech.abilid))
-					{
-						abilFound = true;
-						break;
-					}
-				}
-
-				bool unitFound = false;
-				for (auto& tech : techies_ids)
-				{
-					if (GetObjectTypeId(unit) == tech.unitid)
-					{
-						unitFound = true;
-						break;
-					}
-				}
-
-				if (abilFound || unitFound)
-				{
-					int TechiesSlot = GetUnitOwnerSlot(unit);
-					bool allytech = false;
-					if (!IsPlayerEnemy(unit))
-					{
-						allytech = true;
-						if (!any_techies_addr)
-							any_techies_addr = unit;
-					}
-					bool ownedtech = GetLocalPlayerNumber() == TechiesSlot;
-					if (ownedtech || allytech)
-					{
-						//PrintClassAddress( unitsarray[ i ] );
-						TechiesFound = ownedtech;
-						if (TechiesFound)
-							owned_techies_addr = unit;
-
-						if (!TechiesFoundPrinted)
-						{
-							something_printed = true;
-							TextPrint(GetUnitName(unit), 5.0f);
-							TextPrint("|cFF00FF00Found!|r", 3.0f);
-							if (EnableAutoExplode == 2)
-							{
-								TextPrint("AutoExplode: |cFFEF2020AutoExplode|r", 3.0f);
-							}
-							else if (EnableAutoExplode == 1)
-							{
-								TextPrint("AutoExplode: |cFF00FF00AutoKill|r ", 3.0f);
-							}
-							else
-							{
-								TextPrint("AutoExplode: |cFFFF0000Disabled|r ", 3.0f);
-							}
-							if (EnableForceStaff)
-							{
-								TextPrint("ForceStaff: |cFF00FF00ENABLED|r", 3.0f);
-							}
-							else
-							{
-								TextPrint("ForceStaff: |cFFFF0000DISABLED|r", 3.0f);
-							}
-							if (EnableDagger)
-							{
-								TextPrint("Dagger: |cFF00FF00ENABLED|r", 3.0f);
-							}
-							else
-							{
-								TextPrint("Dagger: |cFFFF0000DISABLED|r", 3.0f);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (something_printed)
-		TechiesFoundPrinted = true;
 }
 
 void UpdateBombList()
@@ -2865,13 +2744,16 @@ void UpdateBombList()
 	// Очистить список мин
 	BombList.clear();
 
+	// Если найден любой techies который может детонировать мины 
+	RemoteTechiesFound = false;
+
 	// Сохранить список мин
 	auto unit_list = GetUnitsArray();
 	for (auto unit : unit_list)
 	{
 		if (!unit)
 			continue;
-		if ( /* !IsIgnoreUnit( unitsarray[ i ] ) &&*/ IsNotBadUnit(unit) && !IsHero(unit))
+		if ( /* !IsIgnoreUnit( unitsarray[ i ] ) &&*/ IsNotBadUnit(unit, 1) && !IsHero(unit))
 		{
 			if (GetLocalPlayerNumber() == GetUnitOwnerSlot(unit) || !IsPlayerEnemy(unit))
 			{
@@ -2955,13 +2837,9 @@ void WorkTechies()
 		BombList.clear();
 		PrintBuffListStr.clear();
 		LastChatAccess = 0;
-		TechiesFound = false;
 		unitstoselect.clear();
-		any_techies_addr = 0;
-		owned_techies_addr = 0;
 		IsInGame = false;
 		IsBotStarted = false;
-		TechiesFoundPrinted = false;
 		return;
 	}
 	else
@@ -2997,22 +2875,11 @@ void WorkTechies()
 
 	if (IsBotStarted)
 	{
-		UpdateAllTechies();
-
-		if (any_techies_addr || TechiesFound)
-		{
-			UpdateBombList();
-		}
-
-		if (TechiesFound && owned_techies_addr)
-		{
+		UpdateBombList();
+		if (RemoteTechiesFound)
 			DetonateIfNeed();
-		}
-
-		if (any_techies_addr || TechiesFound)
-		{
-			ProcessForceStaffAndDagger();
-		}
+		ProcessForceStaffAndDagger();
+		ProcessHotkeys();
 
 		if (IsHotkeyPress)
 		{
@@ -3028,11 +2895,6 @@ void WorkTechies()
 				}
 			}
 			IsHotkeyPress = pressedKey;
-		}
-
-		if (any_techies_addr)
-		{
-			ProcessHotkeys();
 		}
 	}
 }
