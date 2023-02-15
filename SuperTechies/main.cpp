@@ -2036,6 +2036,11 @@ int __stdcall IsNotBadUnit(unsigned char* unitaddr, int onlymem)
 			return 0;
 		}
 
+		if (unitflag2 & 0x40000000u)
+		{
+			return 0;
+		}
+
 		/*	if ( unitflag2 == 0x1001u )
 		{
 		if ( SetInfoObjDebugVal )
@@ -2130,7 +2135,7 @@ int SelectUnit(unsigned char* xunitaddr)
 }
 
 
-int __cdecl SelectAllUnits(int max_per_tick = 1)
+int __cdecl SelectAllUnits(int max_per_tick = 12)
 {
 	int myselectedunits = 0;
 	__asm
