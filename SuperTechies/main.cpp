@@ -155,6 +155,10 @@ int EnableAutoExplode = 1;
 bool EnableDagger = 0;
 bool EnableForceStaff = 1;
 
+bool AutoPlaceLandMines = false;
+bool AutoPlaceRemoteMines = false;
+std::vector<int> UseBeforePlaceItems;
+
 int BaseDmgReducing = 10;
 
 struct TechiesUnitAbilStr
@@ -1250,25 +1254,6 @@ void TextPrint(const char* szText, float fDuration)
 		CALL	GAME_PrintToScreen;
 	}
 }
-
-void TextPrint2(const char* text, float StayUpTime)
-{
-	unsigned char* GAME_PrintToScreen = GameDll + 0x2F3CF0;
-	if (!GameDll || !*(unsigned char**)_W3XGlobalClass)
-		return;
-	__asm
-	{
-		PUSH 0xFFFED312;
-		PUSH StayUpTime;
-		PUSH text;
-		MOV		ECX, [_W3XGlobalClass];
-		MOV		ECX, [ECX];
-		MOV EAX, GAME_PrintToScreen;
-		CALL EAX;
-	}
-}
-
-
 
 std::string LastString = "";
 
@@ -2435,7 +2420,7 @@ void DetonateIfNeed()
 
 void ProcessForceStaffAndDagger()
 {
-	if (!EnableForceStaff)
+	if (!EnableForceStaff || EnableAutoExplode == 0)
 		return;
 
 	unsigned char* force_unit = 0;
@@ -2604,7 +2589,7 @@ void ProcessForceStaffAndDagger()
 								}
 							}
 
-							if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || EnableAutoExplode == 2)
+							if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || (EnableAutoExplode == 2 && outdmg > 100.0f))
 							{
 								if (SelectTechies())
 								{
@@ -2642,7 +2627,7 @@ void ProcessForceStaffAndDagger()
 
 void ProcessHotkeys()
 {
-	if (RemoteTechiesFound)
+	//if (RemoteTechiesFound)
 	{
 		// X + 1
 		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
@@ -2667,14 +2652,14 @@ void ProcessHotkeys()
 			}
 		}
 	}
-	else
+	/*else
 	{
 		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
 		{
 			IsHotkeyPress = true;
 			TextPrint("AutoExplode: |cFFEF2020No hero with access|r", 3.0f);
-		}
-	}
+		}*
+	}*/
 	// X + 2
 	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x32))
 	{
@@ -2705,8 +2690,42 @@ void ProcessHotkeys()
 			TextPrint("Dagger: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
+
+	// X + 4
+	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x34))
+	{
+		IsHotkeyPress = true;
+		AutoPlaceLandMines = !AutoPlaceLandMines;
+
+		if (AutoPlaceLandMines)
+		{
+			TextPrint("Auto land mines: |cFF00FF00ENABLED|r", 3.0f);
+		}
+		else if (!AutoPlaceLandMines)
+		{
+			TextPrint("Auto land mines: |cFFFF0000DISABLED|r", 3.0f);
+		}
+	}
+
 	// X + 5
-	if (IsKeyPressed('X') && IsKeyPressed(0x35) && RemoteTechiesFound)
+	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x35))
+	{
+		IsHotkeyPress = true;
+		AutoPlaceRemoteMines = !AutoPlaceRemoteMines;
+
+		if (AutoPlaceRemoteMines)
+		{
+			TextPrint("Auto remote mines: |cFF00FF00ENABLED|r", 3.0f);
+		}
+		else if (!AutoPlaceRemoteMines)
+		{
+			TextPrint("Auto remote mines: |cFFFF0000DISABLED|r", 3.0f);
+		}
+	}
+
+
+	// X + 6
+	if (IsKeyPressed('X') && IsKeyPressed(0x36) && RemoteTechiesFound)
 	{
 		if (!IsHotkeyPress)
 		{
@@ -2832,7 +2851,6 @@ void WorkTechies()
 		}
 	}
 
-
 	if (!IsBotInitialized)
 		return;
 
@@ -2857,21 +2875,19 @@ void WorkTechies()
 		}
 	}
 
-	if (llabs(CurTickCount - GameStartTime) > 2000 && !IsBotStarted)
+	if (llabs(CurTickCount - GameStartTime) > 5000 && !IsBotStarted)
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[FIX13]|cFF0080E2[|r|cFF008BDD |r|cFF0097D8b|r|cFF00A2D3y|r|cFF00AECE |r|cFF00B9C9Ka|r|cFF00C5C4ra|r|cFF00D1C0u|r|cFF00DCBBl|r|cFF00E8B6ov|r|cFF00F3B6 |r|cFF00FFAC]|r", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[FIX13]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
-		TextPrint("|c0000FF40[Green - available always]|r", 6.0f);
-		TextPrint("|c00FF0000[Red - available when ExpertMode enabled]|r", 6.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
-		TextPrint("         |c0000FF40[X + 1]|r                              |c0000FF40[X + 2]|r                         |c0000FF40[X + 3]|r                            |c0000FF40[X + 8]|r", 6.0f);
-		TextPrint("|c0000FF40[AutoExplode]|r                 |c0000FF40[ForceStaff]|r                  |c0000FF40[Dagger]|r                  |c0000FF40[Expert Mode]|r", 6.0f);
+		TextPrint("         |c0000FF40[X + 1]|r                              |c0000FF40[X + 2]|r                         |c0000FF40[X + 3]|r                            |c0000FF40[X + 4]|r", 6.0f);
+		TextPrint("|c0000FF40[AutoExplode]|r                 |c0000FF40[ForceStaff]|r                  |c0000FF40[Dagger]|r                  |c0000FF40[Auto land mines]|r", 6.0f);
 		TextPrint("|c0000FF40-----------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
-		TextPrint("         |c00FF0000[X + 4]|r                     |c00FF0000[X + 5]|r                         |c00FF0000[X + 6]|r                       |c00FF0000[X + 7]|r", 6.0f);
-		TextPrint("|c00FF0000[Stealth Mode]|r    |c00FF0000[Memory mode]|r    |c00FF0000[ALT-TAB mode]|r    |c00FF0000[Coordinates system]|r", 10.0f);
+		TextPrint("         |c00FF0000[X + 5]|r                     |c00FF0000[X + 6]|r", 6.0f);
+		TextPrint("|c00FF0000[Auto remote mines]|r    |c00FF0000[Detonate by mouse]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
 
 		IsBotStarted = true;
