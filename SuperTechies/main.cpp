@@ -330,12 +330,12 @@ float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, float
 
 	if (damagetype == DMG_TYPE_PHYS)
 	{
-		output_dmg = input_dmg * BaseDmgReducingPhys;
-		output_dmg = input_dmg - (input_dmg * GetProtectForUnit(unitaddr));
+		output_dmg = output_dmg * BaseDmgReducingPhys;
+		output_dmg = output_dmg - (output_dmg * GetProtectForUnit(unitaddr));
 	}
 	else
 	{
-		output_dmg = input_dmg * BaseDmgReducingMagic;
+		output_dmg = output_dmg * BaseDmgReducingMagic;
 	}
 
 	int input_typeid = GetObjectTypeId(unitaddr);
