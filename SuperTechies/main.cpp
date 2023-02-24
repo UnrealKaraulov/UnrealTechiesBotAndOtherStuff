@@ -1157,8 +1157,8 @@ void ParseMainConfiguration()
 	}
 
 	BaseDmgReducing = maincfg_read->ReadInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
-	BaseDmgReducingMagic = maincfg_read->ReadInt("GENERAL", "BASE_REDUCE_MAGIC_DMG", BaseDmgReducingMagic);
-	BaseDmgReducingPhys = maincfg_read->ReadInt("GENERAL", "BASE_REDUCE_PHYS_DMG", BaseDmgReducingPhys);
+	BaseDmgReducingMagic = maincfg_read->ReadFloat("GENERAL", "BASE_REDUCE_MAGIC_DMG", BaseDmgReducingMagic);
+	BaseDmgReducingPhys = maincfg_read->ReadFloat("GENERAL", "BASE_REDUCE_PHYS_DMG", BaseDmgReducingPhys);
 }
 
 
