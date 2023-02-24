@@ -161,6 +161,9 @@ std::vector<int> UseBeforePlaceItems;
 
 int BaseDmgReducing = 10;
 
+float BaseDmgReducingMagic = 0.75;
+float BaseDmgReducingPhys = 1.0;
+
 struct TechiesUnitAbilStr
 {
 	int unitid;
@@ -302,6 +305,8 @@ std::string GetProtectString(float protect)
 
 std::string PrintBuffListStr;
 
+const int DMG_TYPE_MAGIC = 1;
+const int DMG_TYPE_PHYS = 2;
 
 float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, float input_dmg)
 {
@@ -321,11 +326,16 @@ float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, float
 		return 0.0f;
 
 
-	float output_dmg = input_dmg * 0.74f;
+	float output_dmg = input_dmg;
 
-	if (damagetype == 2)
+	if (damagetype == DMG_TYPE_PHYS)
 	{
+		output_dmg = input_dmg * BaseDmgReducingPhys;
 		output_dmg = input_dmg - (input_dmg * GetProtectForUnit(unitaddr));
+	}
+	else
+	{
+		output_dmg = input_dmg * BaseDmgReducingMagic;
 	}
 
 	int input_typeid = GetObjectTypeId(unitaddr);
@@ -1147,6 +1157,8 @@ void ParseMainConfiguration()
 	}
 
 	BaseDmgReducing = maincfg_read->ReadInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
+	BaseDmgReducingMagic = maincfg_read->ReadInt("GENERAL", "BASE_REDUCE_MAGIC_DMG", BaseDmgReducingMagic);
+	BaseDmgReducingPhys = maincfg_read->ReadInt("GENERAL", "BASE_REDUCE_PHYS_DMG", BaseDmgReducingPhys);
 }
 
 
@@ -2279,7 +2291,7 @@ void DetonateIfNeed()
 			{
 				if (GetLocalPlayerNumber() != GetUnitOwnerSlot(unit))
 				{
-					if (IsPlayerEnemy(unit) && IsUnitVisibleToPlayer(unit, GetLocalPlayer()) && GetUnitDamageWithProtection(unit, 1, 600.0f) > 20.0f)
+					if (IsPlayerEnemy(unit) && IsUnitVisibleToPlayer(unit, GetLocalPlayer()) && GetUnitDamageWithProtection(unit, DMG_TYPE_MAGIC, 600.0f) > 20.0f)
 					{
 						float unitx = 0.0f, unity = 0.0f, unitz = 0.0f;
 						GetUnitLocation3D(unit, unitx, unity, unitz);
@@ -2364,7 +2376,7 @@ void DetonateIfNeed()
 
 
 
-								okaydmg += GetUnitDamageWithProtection(unit, 1, BombList[n].dmg);
+								okaydmg += GetUnitDamageWithProtection(unit, DMG_TYPE_MAGIC, BombList[n].dmg);
 								if (okaydmg > GetUnitHP(unit))
 								{
 									xxokaydmg = true;
@@ -2375,7 +2387,7 @@ void DetonateIfNeed()
 							{
 								BombsFound++;
 								unitstoselect.push_back(BombList[n].unitaddr);
-								okaydmg += GetUnitDamageWithProtection(unit, 1, BombList[n].dmg2);
+								okaydmg += GetUnitDamageWithProtection(unit, DMG_TYPE_MAGIC, BombList[n].dmg2);
 								if (okaydmg > GetUnitHP(unit))
 								{
 									xxokaydmg = true;
@@ -2549,10 +2561,10 @@ void ProcessForceStaffAndDagger()
 							float outdmg = 0.0f;
 							float enemyhp = GetUnitHP(unit);
 							float endenemyloc_dist = 0.0f;
-							while (endenemyloc_dist < ForceStaffDistance)
+							while (endenemyloc_dist <= ForceStaffDistance)
 							{
 								Location endenemyloc = GiveNextLocationFromLocAndAngle(startenemyloc, endenemyloc_dist, unitface);
-								endenemyloc_dist += 50.0f;
+								endenemyloc_dist += 25.0f;
 
 								for (unsigned int n = 0; n < BombList.size(); n++)
 								{
@@ -2564,12 +2576,12 @@ void ProcessForceStaffAndDagger()
 									{
 										if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
+											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg);
 											bombs_in_used.insert(n);
 										}
 										else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
+											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg2);
 											bombs_in_used.insert(n);
 										}
 									}
@@ -2577,12 +2589,12 @@ void ProcessForceStaffAndDagger()
 									{
 										if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg);
+											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_MAGIC, BombList[n].dmg);
 											bombs_in_used.insert(n);
 										}
 										else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, 2, BombList[n].dmg2);
+											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_MAGIC, BombList[n].dmg2);
 											bombs_in_used.insert(n);
 										}
 									}
@@ -2879,7 +2891,7 @@ void WorkTechies()
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[FIX13]|cFF0080E2by Karaulov", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v13.2]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
