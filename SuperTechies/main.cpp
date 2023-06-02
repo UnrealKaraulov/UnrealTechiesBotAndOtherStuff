@@ -142,7 +142,7 @@ struct AbilConfigStruct
 	std::vector<float> protectmult;
 };
 
-DWORD customGameThread = 0;
+bool customGameThread = false;
 std::string GameDllName = "Game.dll";
 
 CIniWriter* maincfg_write = NULL;
@@ -1151,10 +1151,8 @@ void ParseMainConfiguration()
 	{
 		GameDllName = maincfg_read->ReadString("GENERAL", "CUSTOM_GAMEDLL", "Game.dll");
 	}
-	if (maincfg_read->ReadBool("GENERAL", "USE_CUSTOM_THREAD_ID", false))
-	{
-		customGameThread = maincfg_read->ReadInt("GENERAL", "CUSTOM_THREAD_ID", 0);
-	}
+
+	customGameThread = maincfg_read->ReadBool("GENERAL", "USE_CUSTOM_THREAD_ID", true);
 
 	BaseDmgReducing = maincfg_read->ReadInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
 	BaseDmgReducingMagic = maincfg_read->ReadFloat("GENERAL", "BASE_REDUCE_MAGIC_DMG", BaseDmgReducingMagic);
@@ -2215,9 +2213,6 @@ int GetUnitAbilityLevel(unsigned char* unitaddr, int id, int checkavaiable)
 	}
 }
 
-
-char facici[50];
-
 float GetUnitFacing(unsigned char* unitaddr)
 {
 	int unitdataoffset = *(int*)(unitaddr + 0x28);
@@ -2966,6 +2961,19 @@ LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam)
 	return CallNextHookEx(hhookSysMsg, nCode, wParam, lParam);
 }
 
+HWND g_HWND = NULL;
+BOOL CALLBACK EnumWindowsProcMy(HWND hwnd, LPARAM lParam)
+{
+	DWORD lpdwProcessId;
+	GetWindowThreadProcessId(hwnd, &lpdwProcessId);
+	if (lpdwProcessId == (DWORD)lParam)
+	{
+		g_HWND = hwnd;
+		return FALSE;
+	}
+	return TRUE;
+}
+
 int WINAPI DllMain(HINSTANCE hDLL, int reason, LPVOID reserved)
 {
 	if (reason == DLL_PROCESS_ATTACH)
@@ -2995,22 +3003,29 @@ int WINAPI DllMain(HINSTANCE hDLL, int reason, LPVOID reserved)
 			std::filesystem::create_directory(techiesBotFileName);
 		}
 
-		if (customGameThread > 0)
-			gameThread = customGameThread;
+		if (customGameThread)
+		{
+			g_HWND = NULL;
+			EnumWindows(EnumWindowsProcMy, GetCurrentProcessId());
+			gameThread = GetWindowThreadProcessId(g_HWND, 0);
+		}
 		else
 			gameThread = GetCurrentThreadId();
 
-		hhookSysMsg = SetWindowsHookEx(WH_GETMESSAGE, HookCallWndProc, GetModuleHandle("Game.dll"), GetCurrentThreadId());
+		hhookSysMsg = SetWindowsHookEx(WH_GETMESSAGE, HookCallWndProc, GetModuleHandle(GameDllName.c_str()), GetCurrentThreadId());
 	}
 	if (reason == DLL_PROCESS_DETACH)
 	{
 		SaveMainConfiguration();
-		if (GetCurrentThreadId() == gameThread)
+		if (hhookSysMsg != NULL && GetCurrentThreadId() == gameThread)
 		{
 			TerminateProcess(GetCurrentProcess(), 0);
 			ExitProcess(0);
 		}
-		UnhookWindowsHookEx(hhookSysMsg);
+		if (hhookSysMsg != NULL)
+		{
+			UnhookWindowsHookEx(hhookSysMsg);
+		}
 		delete maincfg_write;
 		delete maincfg_read;
 		if (mapcfg_read)
