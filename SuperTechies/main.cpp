@@ -2886,7 +2886,7 @@ void WorkTechies()
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v13.2]|cFF0080E2by Karaulov", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v13.3]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
