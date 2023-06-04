@@ -27,7 +27,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <TargetName>UnrealTechiesBot_Final_FIX14</TargetName>
+    <TargetName>UnrealTechiesBot_v15</TargetName>
     <TargetExt>.mix</TargetExt>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

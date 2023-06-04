@@ -100,6 +100,7 @@ struct BombStruct
 	float y;
 	float z;
 	bool remote;
+	bool is_stasis;
 };
 std::vector<BombStruct> BombList;
 
@@ -155,7 +156,10 @@ int EnableAutoExplode = 1;
 bool EnableDagger = 0;
 bool EnableForceStaff = 1;
 
-bool AutoPlaceLandMines = false;
+
+int StasisUnitId = 0;
+bool StatisForceStaff = false;
+
 bool AutoPlaceRemoteMines = false;
 std::vector<int> UseBeforePlaceItems;
 
@@ -489,6 +493,23 @@ bool GetBombStructFromCfg(unsigned char* unitaddr, BombStruct& tmpBombStruct)
 
 	int input_typeid = GetObjectTypeId(unitaddr);
 	int input_owner = GetUnitOwnerSlot(unitaddr);
+
+	if (input_typeid == StasisUnitId)
+	{
+		tmpBombStruct = BombStruct();
+		tmpBombStruct.unitaddr = unitaddr;
+		tmpBombStruct.dmg = 0.0f;
+		tmpBombStruct.dmg2 = 0.0f;
+		tmpBombStruct.range1 = 300;
+		tmpBombStruct.range2 = 300;
+		tmpBombStruct.remote = false;
+		tmpBombStruct.is_stasis = true;
+		GetUnitLocation3D(unitaddr, tmpBombStruct.x, tmpBombStruct.y, tmpBombStruct.z);
+		return true;
+	}
+
+	tmpBombStruct.is_stasis = false;
+
 	for (auto& bomb : techies_bombs)
 	{
 		if (input_typeid == bomb.unit_typeid)
@@ -554,6 +575,7 @@ void LoadDefaultDotaConfiguration()
 	DaggerDistance = 940.0;
 	ForceStaffDistance = 640.0;
 	DetonateCommand = 0xd024c;
+	StasisUnitId = 'otot';
 
 	UnitConfigStruct tmpUnitStruct = UnitConfigStruct();
 	tmpUnitStruct.unit_typeid = 'H00I';
@@ -907,7 +929,7 @@ void SaveMapConfiguration()
 	}
 
 	mapcfg_write->WriteInt("GENERAL", "BOMB_DETONATE_COMMAND", DetonateCommand);
-
+	mapcfg_write->WriteString("GENERAL", "STASIS_UNIT_ID", GetStringFromTypeId(StasisUnitId).c_str());
 
 	mapcfg_write->WriteInt("GENERAL", "PROTECT_DMG_ABIL_COUNT", protection_list_abils.size());
 	for (unsigned int i = 0; i < protection_list_abils.size(); i++)
@@ -1038,6 +1060,7 @@ void ParseMapConfiguration()
 
 	DetonateCommand = mapcfg_read->ReadInt("GENERAL", "BOMB_DETONATE_COMMAND", 0);
 
+	StasisUnitId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "STASIS_UNIT_ID", ""));
 
 	int protect_abilcount = mapcfg_read->ReadInt("GENERAL", "PROTECT_DMG_ABIL_COUNT", 0);
 	for (int i = 0; i < protect_abilcount; i++)
@@ -2569,15 +2592,23 @@ void ProcessForceStaffAndDagger()
 									continue;*/
 									if (!BombList[n].remote)
 									{
-										if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
+										if (BombList[n].is_stasis && StatisForceStaff && Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg);
+											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, 99999.f);
 											bombs_in_used.insert(n);
 										}
-										else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+										else
 										{
-											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg2);
-											bombs_in_used.insert(n);
+											if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
+											{
+												outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg);
+												bombs_in_used.insert(n);
+											}
+											else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+											{
+												outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg2);
+												bombs_in_used.insert(n);
+											}
 										}
 									}
 									else if (GetLocalPlayerNumber() == GetUnitOwnerSlot(BombList[n].unitaddr))
@@ -2702,15 +2733,15 @@ void ProcessHotkeys()
 	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x34))
 	{
 		IsHotkeyPress = true;
-		AutoPlaceLandMines = !AutoPlaceLandMines;
+		StatisForceStaff = !StatisForceStaff;
 
-		if (AutoPlaceLandMines)
+		if (StatisForceStaff)
 		{
-			TextPrint("Auto land mines: |cFF00FF00ENABLED|r", 3.0f);
+			TextPrint("Force to Stasis Trap: |cFF00FF00ENABLED|r", 3.0f);
 		}
-		else if (!AutoPlaceLandMines)
+		else if (!StatisForceStaff)
 		{
-			TextPrint("Auto land mines: |cFFFF0000DISABLED|r", 3.0f);
+			TextPrint("Force to Stasis Trap: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
 
@@ -2814,6 +2845,7 @@ void WorkTechies()
 		if (GetModuleHandle("UnrealTechiesBot_final.mix") ||
 			GetModuleHandle("UnrealTechiesBot_final_hotfix1.mix") ||
 			GetModuleHandle("UnrealTechiesBot_final_hotfix2.mix") ||
+			GetModuleHandle("UnrealTechiesBot_Final_FIX14.mix") ||
 			GetModuleHandle("UnrealTechiesBot_v14.mix") ||
 			GetModuleHandle("UnrealTechiesBot_v13.mix") ||
 			GetModuleHandle("UnrealTechiesBot_v12.mix") ||
@@ -2886,7 +2918,7 @@ void WorkTechies()
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v13.3]|cFF0080E2by Karaulov", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v15.0]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
