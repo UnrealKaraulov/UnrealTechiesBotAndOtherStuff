@@ -407,7 +407,7 @@ __declspec( naked ) signed int __fastcall sub_6F424CE0( int a1, int unused, int 
 	}
 }
 
-__declspec( naked ) int __fastcall sub_6F425490( int a1, int unused, int a2 )
+__declspec( naked ) int __fastcall UpdatePlayerSelection( int a1, int unused, int a2 )
 {
 	JMPADDR = GameDll + 0x425490;
 	__asm
@@ -1241,7 +1241,7 @@ int SelectUnit( int xunitaddr )
 		void * playerseldata = *( void** ) ( GetLocalPlayer( ) + 0x34 );
 		WORD playerslot = GetLocalPlayerNumber( );
 		sub_6F424B80( playerseldata, 0, xunitaddr, playerslot, 0, 1, 1 );
-		sub_6F425490( ( int ) playerseldata, 0, 0 );
+		UpdatePlayerSelection( ( int ) playerseldata, 0, 0 );
 		return sub_6F332700( 0, 0 );
 	}
 

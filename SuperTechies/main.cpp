@@ -52,6 +52,9 @@ long long LastChatAccess = 0;
 long long ForceDetonateTime = 0;
 long long LastTechiesWork = 0;
 
+
+long long LastDmgTime = 0;
+
 // Game.dll address
 unsigned char* GameDll = 0;
 unsigned char* _W3XGlobalClass;
@@ -160,7 +163,7 @@ bool EnableForceStaff = 1;
 int StasisUnitId = 0;
 bool StatisForceStaff = false;
 
-bool AutoPlaceRemoteMines = false;
+bool AutoSuicide = false;
 std::vector<int> UseBeforePlaceItems;
 
 int BaseDmgReducing = 10;
@@ -565,6 +568,16 @@ float ForceStaffDistance = 0.0;
 
 int DetonateCommand = 0;
 
+
+int SuicideAbilId = 0;
+int SuicideCommand = 0;
+float SuicideDmg[4] = { 0.0f, };
+float SuicidePartDmg[4] = { 0.0f, };
+float SuicideDistanceFull = 0.0f;
+float SuicideDistancePart = 0.0f;
+
+
+
 void LoadDefaultDotaConfiguration()
 {
 	techies_ids.push_back({ 'H00K', 0 });
@@ -902,6 +915,21 @@ void SaveMapConfiguration()
 	mapcfg_write->WriteString("GENERAL", "FORCESTAFF_ABILITY_ID", GetStringFromTypeId(ForceStaffAbilId).c_str());
 	mapcfg_write->WriteFloat("GENERAL", "FORCESTAFF_DISTANCE", ForceStaffDistance);
 
+
+	mapcfg_write->WriteString("GENERAL", "SUICIDE_ABILITY_ID", GetStringFromTypeId(SuicideAbilId).c_str());
+
+	mapcfg_write->WriteInt("GENERAL", "SUICIDE_COMMAND", SuicideCommand);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_LVL1", SuicideDmg[0]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_LVL2", SuicideDmg[1]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_LVL3", SuicideDmg[2]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_LVL4", SuicideDmg[3]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_PART_LVL1", SuicidePartDmg[0]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_PART_LVL2", SuicidePartDmg[1]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_PART_LVL3", SuicidePartDmg[2]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DMG_PART_LVL4", SuicidePartDmg[3]);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DISTANCE_FULL", SuicideDistanceFull);
+	mapcfg_write->WriteFloat("GENERAL", "SUICIDE_DISTANCE_PART", SuicideDistancePart);
+
 	mapcfg_write->WriteInt("GENERAL", "SUPPORTED_HERO_NUM", techies_ids.size());
 
 	for (unsigned int i = 0; i < techies_ids.size(); i++)
@@ -1012,6 +1040,19 @@ void ParseMapConfiguration()
 	ForceStaffItemId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "FORCESTAFF_ITEM_ID", ""));
 	ForceStaffAbilId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "FORCESTAFF_ABILITY_ID", ""));
 	ForceStaffDistance = mapcfg_read->ReadFloat("GENERAL", "FORCESTAFF_DISTANCE", 0.0f);
+
+	SuicideAbilId = GetTypeIdFromString(mapcfg_read->ReadString("GENERAL", "SUICIDE_ABILITY_ID", "A06B"));
+	SuicideCommand = mapcfg_read->ReadInt("GENERAL", "SUICIDE_COMMAND", 852040);
+	SuicideDmg[0] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_LVL1", 500.0f);
+	SuicideDmg[1] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_LVL2", 650.0f);
+	SuicideDmg[2] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_LVL3", 850.0f);
+	SuicideDmg[3] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_LVL4", 1150.0f);
+	SuicidePartDmg[0] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_PART_LVL1", 260.0f);
+	SuicidePartDmg[1] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_PART_LVL2", 300.0f);
+	SuicidePartDmg[2] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_PART_LVL3", 340.0f);
+	SuicidePartDmg[3] = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DMG_PART_LVL4", 380.0f);
+	SuicideDistanceFull = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DISTANCE_FULL", 200.0f);
+	SuicideDistancePart = mapcfg_read->ReadFloat("GENERAL", "SUICIDE_DISTANCE_PART", 500.0f);
 
 	int heronum = mapcfg_read->ReadInt("GENERAL", "SUPPORTED_HERO_NUM", 0);
 	for (int i = 0; i < heronum; i++)
@@ -1252,14 +1293,12 @@ void PrintDebugInfo(const char* debuginfo)
 	sprintf_s(TechiesCrash, sizeof(TechiesCrash), "%s", debuginfo);
 }
 
+unsigned char* _GameUI = 0;
+unsigned char* InGame = 0;
 int IsGame()
 {
 	if (!GameDll)
 		return 0;
-
-	unsigned char* _GameUI = GameDll + 0x93631C;
-
-	unsigned char* InGame = GameDll + 0xACE66C;
 
 	if (!InGame)
 		return 0;
@@ -1267,25 +1306,18 @@ int IsGame()
 	return *(unsigned char**)InGame && **(unsigned char***)InGame == _GameUI;
 }
 
+unsigned char* GAME_PrintToScreen = 0;
 void TextPrint(const char* szText, float fDuration)
 {
 	if (StealthMode)
 		return;
 	unsigned int dwDuration = *((unsigned int*)&fDuration);
-	unsigned char* GAME_PrintToScreen = GameDll + 0x2F8E40;
 	if (!GameDll || !*(unsigned char**)_W3XGlobalClass)
 		return;
-	__asm
-	{
-		PUSH	0xFFFFFFFF;
-		PUSH	dwDuration;
-		PUSH	szText;
-		PUSH	0x0;
-		PUSH	0x0;
-		MOV		ECX, [_W3XGlobalClass];
-		MOV		ECX, [ECX];
-		CALL	GAME_PrintToScreen;
-	}
+	typedef void(__fastcall* GAME_PrintToScreen_t)(int ecx, uint32_t edx, uint32_t arg1, uint32_t arg2, const char* outLinePointer, uint32_t dwDuration, uint32_t arg5);
+	int ecx = *(int*)_W3XGlobalClass;
+	GAME_PrintToScreen_t _GAME_PrintToScreen = (GAME_PrintToScreen_t)GAME_PrintToScreen;
+	_GAME_PrintToScreen(ecx, 0x0, 0x0, 0x0, szText, dwDuration, 0xFFFFFFFF);
 }
 
 std::string LastString = "";
@@ -1304,21 +1336,7 @@ void TextPrintUnspammed(const char* szText)
 		float fDuration = 1.3f;
 		if (!ExpertModeEnabled)
 			fDuration += 0.7f;
-		unsigned int dwDuration = *((unsigned int*)&fDuration);
-		unsigned char* GAME_PrintToScreen = GameDll + 0x2F8E40;
-		if (!GameDll || !*(unsigned char**)_W3XGlobalClass)
-			return;
-		__asm
-		{
-			PUSH	0xFFFFFFFF
-			PUSH	dwDuration
-			PUSH	szText
-			PUSH	0x0
-			PUSH	0x0
-			MOV		ECX, [_W3XGlobalClass]
-			MOV		ECX, [ECX]
-			CALL	GAME_PrintToScreen
-		}
+		TextPrint(szText, fDuration);
 	}
 }
 
@@ -1429,56 +1447,12 @@ std::vector<unsigned char*> GetOwnerHeroesArray()
 	return return_value;
 }
 
+void(__thiscall* UpdatePlayerSelection)(unsigned char* pPlayerSelectData, int unk) = NULL;
+void(__thiscall* SelectUnitReal)(unsigned char* pPlayerSelectData, unsigned char* pUnit, int id, int unk1, int unk2, int unk3) = NULL;
 
-__declspec(naked) void __fastcall sub_6F424B80(unsigned char* a1, int unused, unsigned char* unitaddr, int a3, int a4, int a5, int a6)
-{
-	__asm
-	{
-		MOV EAX, GameDll;
-		ADD EAX, 0x424B80;
-		JMP EAX;
-	}
-}
-
-__declspec(naked) signed int __fastcall sub_6F424CE0(int a1, int unused, int a2, int a3, int a4, int a5)
-{
-	__asm
-	{
-		MOV EAX, GameDll;
-		ADD EAX, 0x424CE0;
-		JMP EAX;
-	}
-}
-
-__declspec(naked) int __fastcall sub_6F425490(int a1, int unused, int a2)
-{
-	__asm
-	{
-		MOV EAX, GameDll;
-		ADD EAX, 0x425490;
-		JMP EAX;
-	}
-}
-
-__declspec(naked) int __fastcall sub_6F332700(unsigned char* a1, int unused)
-{
-	__asm
-	{
-		MOV EAX, GameDll;
-		ADD EAX, 0x332700;
-		JMP EAX;
-	}
-}
-
-__declspec(naked) int __fastcall sub_6F03FA30(int a1, int a2)
-{
-	__asm
-	{
-		MOV EAX, GameDll;
-		ADD EAX, 0x3FA30;
-		JMP EAX;
-	}
-}
+//)(GameDll + 0x424CE0))((int)pSelection, UnitAddr, v4, 1, 1);
+//signed int(__thiscall* RemoveUnitFromSelection)(int, int, unsigned int, int, int);
+int(__thiscall* UpdateGameSelectionUI)(unsigned char* a1) = NULL;
 
 typedef unsigned char* (__fastcall* sub_6F26EC20)(unsigned char* unitaddr, int unused, unsigned int SLOTID);
 sub_6F26EC20 _GetItemInSlot;
@@ -1505,28 +1479,28 @@ sub_6F339CC0my: (a1):d002a (a2):c010f14 (a3):-499.668 (a4):-494.432 (a5):1100002
 */
 
 
-int IsAbilityCooldown(unsigned char* unitaddr, int id)
+bool IsAbilityCooldown(unsigned char* unitaddr, int id)
 {
 	unsigned int cooldownflag = 0x200;
 	unsigned char* abiladdr = GetAbility(unitaddr, 0, id, 0, 1, 1, 1);
 	if (!abiladdr || !IsOkayPtr((unsigned char*)abiladdr))
-		return -1;
+		return true;
 
 	int avilityflag = (int)abiladdr + 32;
 	if (IsOkayPtr((unsigned char*)avilityflag))
 	{
-		unsigned int  state = *(unsigned int*)(avilityflag);
-		return state & cooldownflag;
+		unsigned int state = *(unsigned int*)(avilityflag);
+		return (state & cooldownflag) > 0;
 	}
 	else
-		return -1;
+		return true;
 }
 
-int IsAbilityHidden(unsigned char* unitaddr, int id)
+bool IsAbilityHidden(unsigned char* unitaddr, int id)
 {
 	unsigned char* abiladdr = GetAbility(unitaddr, 0, id, 0, 1, 1, 1);
 	if (!abiladdr || !IsOkayPtr((unsigned char*)abiladdr))
-		return -1;
+		return true;
 
 	unsigned int xavaiableflag = 0x8000;
 
@@ -1534,10 +1508,10 @@ int IsAbilityHidden(unsigned char* unitaddr, int id)
 	if (IsOkayPtr((unsigned char*)avilityflag))
 	{
 		unsigned int  state = *(unsigned int*)(avilityflag);
-		return state & xavaiableflag;
+		return (state & xavaiableflag) > 0;
 	}
 	else
-		return -1;
+		return true;
 }
 
 void PrintCooldownFlag(unsigned char* unitaddr, int id)
@@ -1683,21 +1657,16 @@ unsigned char* GetSelectedOwnedUnit()
 	unsigned char* plr = GetLocalPlayer();
 	if (plr)
 	{
-		unsigned char* unitaddr = 0; // = *(int*)((*(int*)plr+0x34)+0x1e0);
-
-		__asm
+		int PlayerData1 = *(int*)(plr + 0x34);
+		if (PlayerData1 > 0)
 		{
-			MOV EAX, plr;
-			MOV EAX, DWORD PTR DS : [EAX + 0x34] ;
-			MOV EAX, DWORD PTR DS : [EAX + 0x1E0] ;
-			MOV unitaddr, EAX;
-		}
-
-		if (unitaddr)
-		{
-			if (GetUnitOwnerSlot(unitaddr) == GetLocalPlayerNumber())
+			unsigned char* unitaddr = *(unsigned char**)(PlayerData1 + 0x1E0);
+			if (unitaddr)
 			{
-				return unitaddr;
+				if (GetUnitOwnerSlot(unitaddr) == GetLocalPlayerNumber())
+				{
+					return unitaddr;
+				}
 			}
 		}
 	}
@@ -1808,35 +1777,6 @@ struct Location
 };
 
 
-#define ADDR(X,REG)\
-	__asm MOV REG, DWORD PTR DS : [ X ] \
-	__asm MOV REG, DWORD PTR DS : [ REG ]
-
-void SendMoveAttackCommand(int cmdId, float X, float Y)
-{
-	unsigned char* _MoveAttackCmd = GameDll + 0x339DD0;
-
-	if (*(int*)_W3XGlobalClass > 0)
-	{
-		__asm
-		{
-			ADDR(_W3XGlobalClass, ECX);
-			MOV ECX, DWORD PTR DS : [ECX + 0x1B4] ;
-
-			PUSH 0;
-			PUSH 6;
-			PUSH 0;
-			PUSH Y;
-			PUSH X;
-			PUSH 0;
-			PUSH cmdId;
-
-			CALL _MoveAttackCmd;
-		}
-	}
-}
-
-
 int GetCMDbyItemSlot(int slot) // ot 1 do 6
 {
 	return (0xd0028 + slot);
@@ -1850,91 +1790,29 @@ int IsItemCooldown(int itemaddr)
 	return !((*(int*)(itemaddr + 32)) & 0x400u);
 }
 
-unsigned char* commandjumpaddr;
-void  sub_6F339DD0my(int a1, unsigned char* itemaddr, float a3, float a4, unsigned char* targetunit, int a6, int a7)
+typedef int(__stdcall* IssueTargetOrPointOrder)(int a1, unsigned char* a2, float a3, float a4, unsigned char* a5, int a6, int a7);
+IssueTargetOrPointOrder IssueTargetOrPointOrderorg = NULL;
+
+void  CommandOrItemTarget(int cmd, unsigned char* itemaddr, float targetx, float targety, unsigned char* targetunitaddr, int flags = 4, bool queue = false)
 {
-	commandjumpaddr = GameDll + 0x339DD0;
-	if (*(int*)_W3XGlobalClass > 0)
-	{
-		__asm
-		{
-			ADDR(_W3XGlobalClass, ECX);
-			MOV ECX, DWORD PTR DS : [ECX + 0x1B4] ;
+	IssueTargetOrPointOrderorg(cmd, itemaddr, targetx, targety, targetunitaddr, flags, queue ? 5 : 4);
+}
+typedef int(__stdcall* IssueWithoutTargetOrder)(int a1, int a2, unsigned int a3, unsigned int a4);
+IssueWithoutTargetOrder IssueWithoutTargetOrderorg = NULL;
 
-			PUSH a7;
-			PUSH a6;
-			PUSH targetunit;
-			PUSH a4;
-			PUSH a3;
-			PUSH itemaddr;
-			PUSH a1;
+typedef int(__stdcall* IssueTargetOrPointOrder2)(int a1, unsigned char* a2, float a3, float a4, int a5, int a6);
+IssueTargetOrPointOrder2 IssueTargetOrPointOrder2org = NULL;
 
-			CALL commandjumpaddr;
-		}
-	}
+void  ItemOrSkillPoint(int cmd, unsigned char* itemorskilladdr, float x, float y, int a5, bool addque = false)
+{
+	IssueTargetOrPointOrder2org(cmd, itemorskilladdr, x, y, a5, addque ? 5 : 4);
 }
 
-
-
-void  CommandItemTarget(int cmd, unsigned char* itemaddr, float targetx, float targety, unsigned char* targetunitaddr, int queue = 0)
+void UseDetonator()
 {
-	sub_6F339DD0my(cmd, itemaddr, targetx, targety, targetunitaddr, 4, queue ? 5 : 4);
+	IssueWithoutTargetOrderorg(DetonateCommand, 0, 1, 4);
 }
 
-unsigned char* CmdWOTaddr;
-void  sub_6F339C60my(int a1, int a2, unsigned int a3, unsigned int a4)
-{
-	CmdWOTaddr = GameDll + 0x339C60;
-	if (*(int*)_W3XGlobalClass > 0)
-	{
-		__asm
-		{
-			ADDR(_W3XGlobalClass, ECX);
-			MOV ECX, DWORD PTR DS : [ECX + 0x1B4] ;
-
-			PUSH a4;
-			PUSH a3;
-			PUSH a2;
-			PUSH a1;
-
-			CALL CmdWOTaddr;
-		}
-	}
-}
-
-
-unsigned char* CmdPointAddr;
-void  sub_6F339CC0my(int a1, unsigned char* unitaddr, float a3, float a4, int a5, int a6)
-{
-	CmdPointAddr = GameDll + 0x339CC0;
-	if (*(int*)_W3XGlobalClass > 0)
-	{
-		__asm
-		{
-			ADDR(_W3XGlobalClass, ECX);
-			MOV ECX, DWORD PTR DS : [ECX + 0x1B4] ;
-
-			PUSH a6;
-			PUSH a5;
-			PUSH a4;
-			PUSH a3;
-			PUSH unitaddr;
-			PUSH a1;
-
-			CALL CmdPointAddr;
-		}
-	}
-}
-
-void  ItemOrSkillPoint(int cmd, unsigned char* itemorskilladdr, float x, float y, int a5, int addque = 0)
-{
-	sub_6F339CC0my(cmd, itemorskilladdr, x, y, a5, addque ? 5 : 4);
-}
-
-void UseDetonator(int id = 0)
-{
-	sub_6F339C60my(DetonateCommand, 0, 1, 4);
-}
 
 Location GetNextPoint(float x, float y, float distance, float angle)
 {
@@ -1944,6 +1822,12 @@ Location GetNextPoint(float x, float y, float distance, float angle)
 	return returnlocation;
 }
 
+void GetUnitLocation2D(unsigned char* unitaddr, float& x, float& y)
+{
+	x = *(float*)(unitaddr + 0x284);
+	y = *(float*)(unitaddr + 0x288);
+}
+
 void GetUnitLocation3D(unsigned char* unitaddr, float& x, float& y, float& z)
 {
 	x = *(float*)(unitaddr + 0x284);
@@ -1951,31 +1835,27 @@ void GetUnitLocation3D(unsigned char* unitaddr, float& x, float& y, float& z)
 	z = *(float*)(unitaddr + 0x28C);
 }
 
-float GetUnitFloatStat(unsigned char* unitaddr, DWORD statNum)
+
+typedef float* (__thiscall* GetUnitFloatStat)(unsigned char* unitaddr, float* a2, int a3);
+GetUnitFloatStat _GetUnitFloatState;
+
+float GetUnitFloatState(unsigned char* unitaddr, DWORD statNum)
 {
-	unsigned char* _GetFloatStat = GameDll + 0x27AE90;
 	float result = 0;
-	__asm
-	{
-		PUSH statNum;
-		LEA EAX, result
-			PUSH EAX
-			MOV ECX, unitaddr
-			CALL _GetFloatStat
-	}
+	_GetUnitFloatState(unitaddr, &result, statNum);
 	return result;
 }
 
 
 float GetUnitHP(unsigned char* unitaddr)
 {
-	return GetUnitFloatStat(unitaddr, 0);
+	return GetUnitFloatState(unitaddr, 0);
 }
 
 
 float GetUnitMaxHP(unsigned char* unitaddr)
 {
-	return GetUnitFloatStat(unitaddr, 1);
+	return GetUnitFloatState(unitaddr, 1);
 }
 
 int GetUnitHPPercent(unsigned char* unitaddr)
@@ -2006,12 +1886,12 @@ float GetUnitTimer(unsigned char* unitaddr)
 	return 0.0f;
 }
 
+unsigned char* UnitVtable = 0;
 // Проверяет юнит или не юнит
 int __stdcall IsNotBadUnit(unsigned char* unitaddr, int onlymem)
 {
 	if (unitaddr && IsOkayPtr((unsigned char*)unitaddr, 0x100))
 	{
-		unsigned char* UnitVtable = GameDll + 0x931934;
 		unsigned char* realvtbladdr = (unsigned char*)&UnitVtable;
 
 		if (realvtbladdr[0] != unitaddr[0])
@@ -2049,6 +1929,11 @@ int __stdcall IsNotBadUnit(unsigned char* unitaddr, int onlymem)
 			return 0;
 		}
 
+		if (unitflag & 8)
+		{
+			return 0;
+		}
+
 		if (unitflag2 & 0x100u)
 		{
 			return 0;
@@ -2059,29 +1944,25 @@ int __stdcall IsNotBadUnit(unsigned char* unitaddr, int onlymem)
 			return 0;
 		}
 
-		/*	if ( unitflag2 == 0x1001u )
-		{
-		if ( SetInfoObjDebugVal )
-		{
-		PrintText( "Flag 4 bad" );
-		}
-		return 0;
-		}
-		*/
 		return 1;
 	}
 
 	return 0;
 }
 
-float Distance(float dX0, float dY0, float dX1, float dY1)
+float Distance2(float dX0, float dY0, float dX1, float dY1)
 {
 	return sqrt((dX1 - dX0) * (dX1 - dX0) + (dY1 - dY0) * (dY1 - dY0));
 }
 
+float Distance(float dX0, float dY0, float dX1, float dY1)
+{
+	return sqrt(pow(dX0 - dX1, 2.f) + pow(dY0 - dY1, 2.f));
+}
+
 float Distance3D(float x1, float y1, float z1, float x2, float y2, float z2)
 {
-	if (Enable3DPoint)
+	/*if (Enable3DPoint)
 	{
 		double d[] = { abs((double)x1 - (double)x2), abs((double)y1 - (double)y2), abs((double)z1 - (double)z2) };
 		if (d[0] < d[1]) std::swap(d[0], d[1]);
@@ -2089,9 +1970,9 @@ float Distance3D(float x1, float y1, float z1, float x2, float y2, float z2)
 		return (float)(d[0] * sqrt(1.0 + d[1] / d[0] + d[2] / d[0]));
 	}
 	else
-	{
-		return Distance(x1, y1, x2, y2);
-	}
+	{*/
+	return Distance(x1, y1, x2, y2);
+	//}
 }
 
 float DistanceBetweenLocs(Location loc1, Location loc2)
@@ -2104,64 +1985,33 @@ Location GiveNextLocationFromLocAndAngle(Location startloc, float distance, floa
 	return GetNextPoint(startloc.X, startloc.Y, distance, angle);
 }
 
-//
-//
-//
-//void __cdecl sub_6F3C7910(unsigned char * xunitaddr)
-//{
-//	DWORD _UnitSelect = 0x381710 + GameDll;
-//
-//	if (!IsNotBadUnit(xunitaddr))
-//	{
-//		return;
-//	}
-//
-//	__asm
-//	{
-//		MOV EAX, DWORD PTR DS : [_W3XGlobalClass] ;
-//		MOV EAX, DWORD PTR DS : [EAX] ;
-//		MOV ESI, DWORD PTR DS : [EAX + 0x24C] ;
-//		PUSH 0;
-//		PUSH 0;
-//		PUSH 0;
-//		PUSH xunitaddr;
-//		MOV ECX, ESI;
-//		CALL _UnitSelect;
-//	}
-//}
 
-
-
-
-int SelectUnit(unsigned char* xunitaddr)
+bool SelectUnit(unsigned char* xunitaddr)
 {
 	if (!IsNotBadUnit(xunitaddr))
 	{
-		return -1;
+		return false;
 	}
 
 	if (*(unsigned char*)(xunitaddr + 32) & 2)
 	{
 		unsigned char* playerseldata = *(unsigned char**)(GetLocalPlayer() + 0x34);
 		int playerslot = GetLocalPlayerNumber();
-		sub_6F424B80(playerseldata, 0, xunitaddr, playerslot, 0, 1, 1);
-		sub_6F425490((int)playerseldata, 0, 0);
-		return sub_6F332700(0, 0);
+		SelectUnitReal(playerseldata, xunitaddr, playerslot, 0, 1, 1);
+		UpdatePlayerSelection(playerseldata, 0);
+		return true;
 	}
 
-	return -1;
+	return false;
 }
 
+int(__cdecl* ClearSelection)(void) = NULL;
 
 int __cdecl SelectAllUnits(int max_per_tick = 12)
 {
 	int myselectedunits = 0;
-	__asm
-	{
-		MOV EDX, GameDll;
-		ADD EDX, 0x3BBAA0;
-		CALL EDX;
-	}
+
+	ClearSelection();
 
 	auto unittoselectlocal = unitstoselect;
 
@@ -2169,13 +2019,23 @@ int __cdecl SelectAllUnits(int max_per_tick = 12)
 	{
 		if (myselectedunits < max_per_tick)
 		{
-			if (SelectUnit(unittoselectlocal[i]) != -1)
+			if (SelectUnit(unittoselectlocal[i]))
 				myselectedunits++;
 		}
 	}
+
+	UpdateGameSelectionUI(0);
+
 	return myselectedunits > 0;
 }
 
+void SelectAllUnitsAndDetonate()
+{
+	if (SelectAllUnits()) // fix to while if need
+	{
+		UseDetonator();
+	}
+}
 
 float GetProtectForUnit(unsigned char* unitaddr)
 {
@@ -2236,8 +2096,30 @@ int GetUnitAbilityLevel(unsigned char* unitaddr, int id, int checkavaiable)
 	}
 }
 
+typedef int(__fastcall* pGetSomeAddr)(unsigned int a1, unsigned int a2);
+pGetSomeAddr GetSomeAddr;
+
+float GetUnitFacingMega(unsigned char* unitaddr)
+{
+	if (unitaddr)
+	{
+		int dataoffset = (int)GetSomeAddr(*(unsigned int*)(unitaddr + 0x16C), *(unsigned int*)(unitaddr + 0x170));
+		if (dataoffset)
+		{
+			float retangle = *(float*)(dataoffset + 0x8C);
+			/*	if (retangle < 0)
+				{
+					return 360.0f + retangle;
+				}*/
+			return retangle;
+		}
+	}
+	return 0.0f;
+}
+
 float GetUnitFacing(unsigned char* unitaddr)
 {
+	//return GetUnitFacingMega(unitaddr);
 	int unitdataoffset = *(int*)(unitaddr + 0x28);
 	if (unitaddr && unitdataoffset > 0)
 	{
@@ -2248,28 +2130,17 @@ float GetUnitFacing(unsigned char* unitaddr)
 }
 
 
-int __cdecl IsUnitVisibleToPlayer(unsigned char* unitaddr, unsigned char* player)
+bool __cdecl IsUnitVisibleToPlayer(unsigned char* unitaddr, unsigned char* player)
 {
-	if (player)
+	int retval = 0;
+	if (unitaddr && player && *(int*)unitaddr)
 	{
-		__asm
-		{
-			mov esi, unitaddr;
-			mov eax, player;
-			movzx eax, byte ptr[eax + 0x30];
-			mov edx, [esi];
-			push 0x04;
-			push 0x00;
-			push eax;
-			mov eax, [edx + 0x000000FC];
-			mov ecx, esi;
-			call eax;
-		}
+		typedef int(__fastcall* FunctionType)(void*, int, int, int, int);
+		FunctionType function = (FunctionType)(*(int*)(*(int*)unitaddr + 0x000000FC));
+		retval = function(unitaddr, 0, player[0x30], 0x00, 0x04);
 	}
-	else
-		return 0;
+	return retval > 0;
 }
-
 
 bool SelectTechies()
 {
@@ -2331,13 +2202,8 @@ void DetonateIfNeed()
 
 						if (unitstoselect.size() > 0)
 						{
-							TextPrintUnspammed("[AutoExplode!]");
-
-							if (SelectAllUnits()) // fix to while if need
-							{
-								UseDetonator(1);
-							}
-
+							TextPrintUnspammed("[~~~~AutoExplode~~~~]");
+							SelectAllUnitsAndDetonate();
 							unitstoselect.clear();
 							SelectTechies();
 						}
@@ -2347,7 +2213,7 @@ void DetonateIfNeed()
 		}
 	}
 
-	if (EnableAutoExplode == 1)
+	if (EnableAutoExplode == 1 && CurTickCount - LastDmgTime > 100)
 	{
 		auto unit_list = GetUnitsArray();
 		for (auto unit : unit_list)
@@ -2422,16 +2288,10 @@ void DetonateIfNeed()
 								sprintf_s(printdata, 1024, "[AutoKill->OK]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%i|r. Count: %i\n%s", GetUnitName(unit), (int)GetUnitHP(unit), (int)okaydmg, BombsFound, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
 								TextPrintUnspammed(printdata);
 								delete[]printdata;
-								/*	for ( unsigned int x = 0; x < unitstoselect.size( ); x++ )
-								{
-								AddUnitToIgnore( unitstoselect[ x ] );
-								}*/
-								if (SelectAllUnits())//Fix to while if need
-								{
-									UseDetonator(2);
-								}
+								SelectAllUnitsAndDetonate();
 								unitstoselect.clear();
 								SelectTechies();
+								LastDmgTime = CurTickCount;
 							}
 							else
 							{
@@ -2448,9 +2308,11 @@ void DetonateIfNeed()
 	}
 }
 
+float old_unit_angle = 0.0f;
+
 void ProcessForceStaffAndDagger()
 {
-	if (!EnableForceStaff || EnableAutoExplode == 0)
+	if (!EnableForceStaff || EnableAutoExplode == 0 || CurTickCount - LastDmgTime < 100)
 		return;
 
 	unsigned char* force_unit = 0;
@@ -2473,13 +2335,13 @@ void ProcessForceStaffAndDagger()
 	if (!force_unit)
 		return;
 
-	int ForceStaffFound = 0;
+	int ForceStaffFound = false;
 	int forcestaffitemid = 0;
-	unsigned char* itemaddr = 0;
+	unsigned char* forceitemaddr = 0;
 	for (int i = 0; i < 6; i++)
 	{
-		itemaddr = GetItemInSlot(force_unit, i);
-		if (itemaddr && IsTypeIdEqual(itemaddr, ForceStaffItemId))
+		forceitemaddr = GetItemInSlot(force_unit, i);
+		if (forceitemaddr && IsTypeIdEqual(forceitemaddr, ForceStaffItemId))
 		{
 			if (IsAbilityCooldown(force_unit, ForceStaffAbilId))
 			{
@@ -2496,7 +2358,7 @@ void ProcessForceStaffAndDagger()
 					_Forcecooldown = 0;
 					TextPrint("|cFF21FF00F|r|cFF31FF00o|r|cFF42FF00r|r|cFF52FF00c|r|cFF63FF00e|r|cFF73FF00s|r|cFF84FF00t|r|cFF94FF00a|r|cFFA5FF00f|r|cFFB5FF00f|r|cFFC6FF00 |r|cFFD6FF00co|r|cFFC6FF00o|r|cFFB5FF00l|r|cFFA5FF00d|r|cFF94FF00o|r|cFF84FF00w|r|cFF73FF00n|r|cFF63FF00 |r|cFF52FF00e|r|cFF42FF00n|r|cFF31FF00d|r|cFF21FF00.|r", 3.0f);
 				}
-				ForceStaffFound = 1;
+				ForceStaffFound = true;
 				forcestaffitemid = i;
 			}
 
@@ -2545,7 +2407,13 @@ void ProcessForceStaffAndDagger()
 
 	if (ForceStaffFound && !_Forcecooldown)
 	{
+
+		//float techface = GetUnitFacing(GetSelectedOwnedUnit());
+		float techiesunitx = 0.0f, techiesunity = 0.0f, techiesunitz = 0.0f;
+		GetUnitLocation3D(force_unit, techiesunitx, techiesunity, techiesunitz);
+
 		auto unit_list = GetUnitsArray();
+
 		for (auto unit : unit_list)
 		{
 			if (!unit)
@@ -2561,14 +2429,16 @@ void ProcessForceStaffAndDagger()
 						float targetunitx = 0.0f, targetunity = 0.0f, targetunitz = 0.0f;
 						GetUnitLocation3D(unit, targetunitx, targetunity, targetunitz);
 
-						float techiesunitx = 0.0f, techiesunity = 0.0f, techiesunitz = 0.0f;
-						GetUnitLocation3D(force_unit, techiesunitx, techiesunity, techiesunitz);
-
 						if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance || (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < (ForceStaffDistance + DaggerDistance)))
 						{
+							float DaggerDist = 0.0f;
 							if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance)
 							{
 								DaggerFound = false;
+							}
+							else
+							{
+								DaggerDist = Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) - ForceStaffDistance + 42.0f;
 							}
 
 							Location startenemyloc = Location();
@@ -2592,22 +2462,25 @@ void ProcessForceStaffAndDagger()
 									continue;*/
 									if (!BombList[n].remote)
 									{
-										if (BombList[n].is_stasis && StatisForceStaff && Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
+										if (endenemyloc_dist > BombList[n].range1)
 										{
-											outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, 99999.f);
-											bombs_in_used.insert(n);
-										}
-										else
-										{
-											if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
+											if (BombList[n].is_stasis && StatisForceStaff && Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
 											{
-												outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg);
+												outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, 99999.f);
 												bombs_in_used.insert(n);
 											}
-											else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+											else
 											{
-												outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg2);
-												bombs_in_used.insert(n);
+												if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range1)
+												{
+													outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg);
+													bombs_in_used.insert(n);
+												}
+												else if (Distance3D(endenemyloc.X, endenemyloc.Y, BombList[n].z, BombList[n].x, BombList[n].y, BombList[n].z) < BombList[n].range2)
+												{
+													outdmg += GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, BombList[n].dmg2);
+													bombs_in_used.insert(n);
+												}
 											}
 										}
 									}
@@ -2635,25 +2508,349 @@ void ProcessForceStaffAndDagger()
 
 									if (IsNotBadUnit(unit))
 									{
-										if (DaggerFound)
+										if (fabs(old_unit_angle - unitface) * (180.0f / 3.141592653f) < 1.0f)
 										{
-											int dagcmd = GetCMDbyItemSlot(daggeritemid);
+											char* printdata = new char[1024];
+											sprintf_s(printdata, 1024, "[~~~FORCESTAFF~~~]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r. Count: %i\n%s", GetUnitName(unit), (int)enemyhp, outdmg, bombs_in_used.size(), PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+											TextPrintUnspammed(printdata);
+											delete[]printdata;
 
-											ItemOrSkillPoint(dagcmd, daggeritemaddr, targetunitx + 1.0f, targetunity - 1.0f, 0x100002);
-											CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit, 1);
+											if (DaggerFound)
+											{
+												int dagcmd = GetCMDbyItemSlot(daggeritemid);
 
-											ForceDetonateTime = CurTickCount;
-											forceunitaddr = unit;
+												Location starttechiesloc = Location();
+												starttechiesloc.X = techiesunitx;
+												starttechiesloc.Y = techiesunity;
+
+												if (DaggerDist < 0.0f)
+													DaggerDist = 42.0f;
+
+												float facebetween = atan2((targetunity - techiesunity), (targetunitx - techiesunitx));
+
+												Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, DaggerDist, facebetween);
+
+												ItemOrSkillPoint(dagcmd, daggeritemaddr, endtechiesloc.X, endtechiesloc.Y, 0x100002);
+												CommandOrItemTarget(scmd, forceitemaddr, targetunitx, targetunity, unit, 4, true);
+
+												ForceDetonateTime = CurTickCount;
+												forceunitaddr = unit;
+											}
+											else
+											{
+												ForceDetonateTime = CurTickCount;
+												forceunitaddr = unit;
+
+												CommandOrItemTarget(scmd, forceitemaddr, targetunitx, targetunity, unit, 4);
+											}
 										}
-										else
-										{
-											ForceDetonateTime = CurTickCount;
-											forceunitaddr = unit;
-
-											CommandItemTarget(scmd, itemaddr, targetunitx, targetunity, unit);
-										}
+										old_unit_angle = unitface;
+										break;
 									}
 								}
+							}
+							else if (bombs_in_used.size() > 0)
+							{
+								char* printdata = new char[1024];
+								sprintf_s(printdata, 1024, "[~~~FORCESTAFF~~~]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r. Count: %i\n%s", GetUnitName(unit), (int)enemyhp, outdmg, bombs_in_used.size(), PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+								TextPrintUnspammed(printdata);
+								delete[]printdata;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+void SuicideIfNeed()
+{
+	if (!AutoSuicide || CurTickCount - LastDmgTime < 100)
+		return;
+
+	unsigned char* suicide_unit = 0;
+
+	auto units = GetOwnerHeroesArray();
+
+	int suicide_lvl = 0;
+
+	for (auto unit : units)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			suicide_lvl = GetUnitAbilityLevel(unit, SuicideAbilId);
+			if (suicide_lvl > 0 && !IsAbilityCooldown(unit, SuicideAbilId))
+			{
+				suicide_unit = unit;
+				break;
+			}
+		}
+	}
+
+	if (!suicide_unit)
+		return;
+
+	bool DaggerFound = false;
+	int daggeritemid = 0;
+	unsigned char* daggeritemaddr = 0;
+
+	for (int i = 0; i < 6; i++)
+	{
+		daggeritemaddr = GetItemInSlot(suicide_unit, i);
+		if (daggeritemaddr && IsTypeIdEqual(daggeritemaddr, DaggerItemId))
+		{
+			if (IsAbilityCooldown(suicide_unit, DaggerAbilId))
+			{
+				if (!_Daggercooldown)
+				{
+					TextPrint("|cFFFF6700D|r|cFFFE6301a|r|cFFFD5F02g|r|cFFFC5C03g|r|cFFFB5805e|r|cFFFA5406r|r|cFFF85007 |r|cFFF74D08c|r|cFFF64909o|r|cFFF5450Ao|r|cFFF4410Bl|r|cFFF33E0Dd|r|cFFF23A0Eo|r|cFFF1360Fw|r|cFFF03210n|r|cFFEF2F11 |r|cFFED2B12s|r|cFFEC2713t|r|cFFEB2315a|r|cFFEA2016r|r|cFFE91C17t|r|cFFE81818.|r", 3.0f);
+					_Daggercooldown = 1;
+				}
+			}
+			else
+			{
+				if (_Daggercooldown)
+				{
+					TextPrint("|cFF21FF00D|r|cFF35FF00a|r|cFF49FF00g|r|cFF5DFF00g|r|cFF71FF00e|r|cFF86FF00r|r|cFF9AFF00 |r|cFFAEFF00c|r|cFFC2FF00o|r|cFFD6FF00ol|r|cFFC2FF00d|r|cFFAEFF00o|r|cFF9AFF00w|r|cFF86FF00n|r|cFF71FF00 |r|cFF5DFF00e|r|cFF49FF00n|r|cFF35FF00d|r|cFF21FF00.|r", 3.0f);
+					_Daggercooldown = 0;
+				}
+
+				DaggerFound = true;
+				daggeritemid = i;
+			}
+			break;
+		}
+	}
+
+	bool ForceStaffFound = false;
+	int forcestaffitemid = 0;
+	unsigned char* forceitemaddr = 0;
+	for (int i = 0; i < 6; i++)
+	{
+		forceitemaddr = GetItemInSlot(suicide_unit, i);
+		if (forceitemaddr && IsTypeIdEqual(forceitemaddr, ForceStaffItemId))
+		{
+			if (IsAbilityCooldown(suicide_unit, ForceStaffAbilId))
+			{
+				if (!_Forcecooldown)
+				{
+					TextPrint("|cFFFF6700F|r|cFFFE6401o|r|cFFFD6102r|r|cFFFC5E03c|r|cFFFB5A04e|r|cFFFA5705s|r|cFFF95406t|r|cFFF95107a|r|cFFF84E08f|r|cFFF74B09f|r|cFFF6470A |r|cFFF5440Bc|r|cFFF4410Co|r|cFFF33E0Co|r|cFFF23B0Dl|r|cFFF1380Ed|r|cFFF0340Fo|r|cFFEF3110w|r|cFFEE2E11n|r|cFFEE2B12 |r|cFFED2813s|r|cFFEC2514t|r|cFFEB2115a|r|cFFEA1E16r|r|cFFE91B17t|r|cFFE81818.|r", 3.0f);
+					_Forcecooldown = 1;
+				}
+			}
+			else
+			{
+				if (_Forcecooldown)
+				{
+					_Forcecooldown = 0;
+					TextPrint("|cFF21FF00F|r|cFF31FF00o|r|cFF42FF00r|r|cFF52FF00c|r|cFF63FF00e|r|cFF73FF00s|r|cFF84FF00t|r|cFF94FF00a|r|cFFA5FF00f|r|cFFB5FF00f|r|cFFC6FF00 |r|cFFD6FF00co|r|cFFC6FF00o|r|cFFB5FF00l|r|cFFA5FF00d|r|cFF94FF00o|r|cFF84FF00w|r|cFF73FF00n|r|cFF63FF00 |r|cFF52FF00e|r|cFF42FF00n|r|cFF31FF00d|r|cFF21FF00.|r", 3.0f);
+				}
+				ForceStaffFound = true;
+				forcestaffitemid = i;
+			}
+
+			break;
+		}
+	}
+
+	// Если есть даггер поиск юнитов в радиусе 1200 ...
+	// Если есть forcestaff и на пути есть юнит ...
+	// Если в радиусе FULL/PART есть юнит...
+
+	float techiesunitx = 0.0f, techiesunity = 0.0f, techiesunitz = 0.0f;
+	GetUnitLocation3D(suicide_unit, techiesunitx, techiesunity, techiesunitz);
+
+	auto unit_list = GetUnitsArray();
+
+	suicide_lvl -= 1;
+	if (suicide_lvl < 0)
+		suicide_lvl = 0;
+	if (suicide_lvl > 3)
+		suicide_lvl = 3;
+
+	float DMG_FULL = SuicideDmg[suicide_lvl];
+	float DMG_PART = SuicidePartDmg[suicide_lvl];
+
+	for (auto unit : unit_list)
+	{
+		if (!unit)
+			continue;
+		if (IsNotBadUnit(unit) && IsHero(unit))
+		{
+			if (GetLocalPlayerNumber() != GetUnitOwnerSlot(unit))
+			{
+				if (IsPlayerEnemy(unit) && IsUnitVisibleToPlayer(unit, GetLocalPlayer()))
+				{
+					float techface = GetUnitFacing(GetSelectedOwnedUnit());
+					float enemyhp = GetUnitHP(unit);
+
+					float targetunitx = 0.0f, targetunity = 0.0f, targetunitz = 0.0f;
+					GetUnitLocation3D(unit, targetunitx, targetunity, targetunitz);
+
+					if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							char* printdata = new char[1024];
+							sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+							TextPrintUnspammed(printdata);
+							delete[]printdata;
+							CommandOrItemTarget(SuicideCommand, 0, techiesunitx, techiesunity, 0, 4);
+
+							LastDmgTime = CurTickCount;
+						}
+					}
+					else if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							char* printdata = new char[1024];
+							sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][2]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+							TextPrintUnspammed(printdata);
+							delete[]printdata;
+							CommandOrItemTarget(SuicideCommand, 0, techiesunitx, techiesunity, 0, 4);
+
+							LastDmgTime = CurTickCount;
+						}
+					}
+					else if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + DaggerDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							float DaggerDist = Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz);
+
+							if (DaggerDist < 0.0f)
+								DaggerDist = 42.0f;
+
+							float facebetween = atan2((targetunity - techiesunity), (targetunitx - techiesunitx));
+
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, DaggerDist, facebetween);
+							char* printdata = new char[1024];
+							sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][DAGGER]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+							TextPrintUnspammed(printdata);
+							delete[]printdata;
+							int dagcmd = GetCMDbyItemSlot(daggeritemid);
+							ItemOrSkillPoint(dagcmd, daggeritemaddr, endtechiesloc.X, endtechiesloc.Y, 0x100002);
+						}
+					}
+					else if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							float DaggerDist = Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz);
+
+							if (DaggerDist < 0.0f)
+								DaggerDist = 42.0f;
+
+							float facebetween = atan2((targetunity - techiesunity), (targetunitx - techiesunitx));
+
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, DaggerDist, facebetween);
+							char* printdata = new char[1024];
+							sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][DAGGER2]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+							TextPrintUnspammed(printdata);
+							delete[]printdata;
+							int dagcmd = GetCMDbyItemSlot(daggeritemid);
+							ItemOrSkillPoint(dagcmd, daggeritemaddr, endtechiesloc.X, endtechiesloc.Y, 0x100002);
+						}
+					}
+					else if (ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + ForceStaffDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, ForceStaffDistance, techface);
+							int scmd = GetCMDbyItemSlot(forcestaffitemid);
+
+							if (Distance3D(endtechiesloc.X, endtechiesloc.Y, targetunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull)
+							{
+								char* printdata = new char[1024];
+								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][FORCE]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+								TextPrintUnspammed(printdata);
+								delete[]printdata;
+								CommandOrItemTarget(scmd, forceitemaddr, techiesunitx, techiesunity, suicide_unit, 4);
+							}
+						}
+					}
+					else if (ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + ForceStaffDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, ForceStaffDistance, techface);
+							int scmd = GetCMDbyItemSlot(forcestaffitemid);
+
+							if (Distance3D(endtechiesloc.X, endtechiesloc.Y, targetunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart)
+							{
+								char* printdata = new char[1024];
+								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][FORCE2]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+								TextPrintUnspammed(printdata);
+								delete[]printdata;
+								CommandOrItemTarget(scmd, forceitemaddr, techiesunitx, techiesunity, suicide_unit, 4);
+							}
+						}
+					}
+					else if (DaggerFound && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + DaggerDistance + ForceStaffDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, ForceStaffDistance, techface);
+							int scmd = GetCMDbyItemSlot(forcestaffitemid);
+
+							if (Distance3D(endtechiesloc.X, endtechiesloc.Y, targetunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + DaggerDistance)
+							{
+								char* printdata = new char[1024];
+								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][DAG+FORCE]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+								TextPrintUnspammed(printdata);
+								delete[]printdata;
+								CommandOrItemTarget(scmd, forceitemaddr, techiesunitx, techiesunity, suicide_unit, 4);
+							}
+						}
+					}
+					else if (DaggerFound && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance + ForceStaffDistance)
+					{
+						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						{
+							Location starttechiesloc = Location();
+							starttechiesloc.X = techiesunitx;
+							starttechiesloc.Y = techiesunity;
+
+							Location endtechiesloc = GiveNextLocationFromLocAndAngle(starttechiesloc, ForceStaffDistance, techface);
+							int scmd = GetCMDbyItemSlot(forcestaffitemid);
+
+							if (Distance3D(endtechiesloc.X, endtechiesloc.Y, targetunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance)
+							{
+								char* printdata = new char[1024];
+								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][DAG+FORCE2]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
+								TextPrintUnspammed(printdata);
+								delete[]printdata;
+								CommandOrItemTarget(scmd, forceitemaddr, techiesunitx, techiesunity, suicide_unit, 4);
 							}
 						}
 					}
@@ -2749,15 +2946,15 @@ void ProcessHotkeys()
 	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x35))
 	{
 		IsHotkeyPress = true;
-		AutoPlaceRemoteMines = !AutoPlaceRemoteMines;
+		AutoSuicide = !AutoSuicide;
 
-		if (AutoPlaceRemoteMines)
+		if (AutoSuicide)
 		{
-			TextPrint("Auto remote mines: |cFF00FF00ENABLED|r", 3.0f);
+			TextPrint("Auto Suicide: |cFF00FF00ENABLED|r", 3.0f);
 		}
-		else if (!AutoPlaceRemoteMines)
+		else if (!AutoSuicide)
 		{
-			TextPrint("Auto remote mines: |cFFFF0000DISABLED|r", 3.0f);
+			TextPrint("Auto Suicide: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
 
@@ -2791,10 +2988,7 @@ void ProcessHotkeys()
 
 		if (unitstoselect.size() > 0)
 		{
-			if (SelectAllUnits()) //fix to while if need
-			{
-				UseDetonator(3);
-			}
+			SelectAllUnitsAndDetonate();
 			unitstoselect.clear();
 			SelectTechies();
 		}
@@ -2918,15 +3112,15 @@ void WorkTechies()
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v15.0]|cFF0080E2by Karaulov", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v15.8]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
 		TextPrint("         |c0000FF40[X + 1]|r                              |c0000FF40[X + 2]|r                         |c0000FF40[X + 3]|r                            |c0000FF40[X + 4]|r", 6.0f);
-		TextPrint("|c0000FF40[AutoExplode]|r                 |c0000FF40[ForceStaff]|r                  |c0000FF40[Dagger]|r                  |c0000FF40[Auto land mines]|r", 6.0f);
+		TextPrint("|c0000FF40[AutoExplode]|r                 |c0000FF40[ForceStaff]|r                  |c0000FF40[Dagger]|r                  |c0000FF40[Auto Trap]|r", 6.0f);
 		TextPrint("|c0000FF40-----------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
-		TextPrint("         |c00FF0000[X + 5]|r                     |c00FF0000[X + 6]|r", 6.0f);
-		TextPrint("|c00FF0000[Auto remote mines]|r    |c00FF0000[Detonate by mouse]|r", 10.0f);
+		TextPrint("         |c0000FF40[X + 5]|r                     |c0000FF40[X + 6]|r", 6.0f);
+		TextPrint("|c0000FF40[Auto SUICIDE]|r    |c0000FF40[Detonate by mouse]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
 
 		IsBotStarted = true;
@@ -2939,6 +3133,7 @@ void WorkTechies()
 		if (RemoteTechiesFound)
 			DetonateIfNeed();
 		ProcessForceStaffAndDagger();
+		SuicideIfNeed();
 		ProcessHotkeys();
 
 		if (IsHotkeyPress)
@@ -3018,11 +3213,30 @@ int WINAPI DllMain(HINSTANCE hDLL, int reason, LPVOID reserved)
 		ParseMainConfiguration();
 
 		GameDll = (unsigned char*)GetModuleHandle(GameDllName.c_str());
+
 		_W3XGlobalClass = GameDll + 0xAB4F80;
 		_GetItemInSlot = (sub_6F26EC20)(GameDll + 0x26EC20);
 		GetAbility = (sub_6F0787D0)(GameDll + 0x787D0);
 		GetTypeInfo = (sub_6F32C880)(GameDll + 0x32C880);
 		MapFileName = (const char*)(GameDll + 0xAAE7CE);
+		GetSomeAddr = (pGetSomeAddr)(0x03FA30 + GameDll);
+		UnitVtable = GameDll + 0x931934;
+
+		_GetUnitFloatState = (GetUnitFloatStat)(GameDll + 0x27AE90);
+
+		IssueTargetOrPointOrderorg = (IssueTargetOrPointOrder)(GameDll + 0x339DD0);
+		IssueWithoutTargetOrderorg = (IssueWithoutTargetOrder)(GameDll + 0x339C60);
+		IssueTargetOrPointOrder2org = (IssueTargetOrPointOrder2)(GameDll + 0x339CC0);
+
+		GAME_PrintToScreen = GameDll + 0x2F8E40;
+
+		InGame = GameDll + 0xACE66C;
+		_GameUI = GameDll + 0x93631C;
+
+		SelectUnitReal = (void(__thiscall*)(unsigned char* pPlayerSelectData, unsigned char* pUnit, int id, int unk1, int unk2, int unk3))(GameDll + 0x424B80);
+		UpdatePlayerSelection = (void(__thiscall*)(unsigned char* pPlayerSelectData, int unk))(GameDll + 0x425490);
+		UpdateGameSelectionUI = (int(__thiscall*)(unsigned char* a1))(GameDll + 0x332700);
+		ClearSelection = (int(__cdecl*)(void))(GameDll + 0x3BBAA0);
 
 		if (!GameDll)
 		{
