@@ -163,7 +163,7 @@ bool EnableForceStaff = 1;
 int StasisUnitId = 0;
 bool StatisForceStaff = false;
 
-bool AutoSuicide = false;
+int AutoSuicide = 0;
 std::vector<int> UseBeforePlaceItems;
 
 int BaseDmgReducing = 10;
@@ -2603,7 +2603,7 @@ void ProcessForceStaffAndDagger()
 
 void SuicideIfNeed()
 {
-	if (!AutoSuicide)
+	if (AutoSuicide == 0)
 		return;
 
 	unsigned char* suicide_unit = 0;
@@ -2815,8 +2815,7 @@ void SuicideIfNeed()
 							startenemyloc.Y = targetunity;
 							Location endenemyloc = GiveNextLocationFromLocAndAngle(startenemyloc, ForceStaffDistance, enemyface);
 
-							if (Distance3D(techiesunitx, techiesunity, targetunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance
-								&& Distance3D(endenemyloc.X, endenemyloc.Y, targetunitz, techiesunitx, techiesunity, targetunitz) < SuicideDistanceFull)
+							if (Distance3D(endenemyloc.X, endenemyloc.Y, techiesunitz, techiesunitx, techiesunity, techiesunitz) < SuicideDistanceFull)
 							{
 								char* printdata = new char[1024];
 								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][FORCE_ENEMY2]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
@@ -2870,7 +2869,7 @@ void SuicideIfNeed()
 							delete[]printdata;
 						}
 					}
-					else if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart)
+					else if (AutoSuicide == 2 && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
 						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
@@ -2900,7 +2899,7 @@ void SuicideIfNeed()
 							delete[]printdata;
 						}
 					}
-					else if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance)
+					else if (AutoSuicide == 2 && DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
 						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
@@ -2932,7 +2931,7 @@ void SuicideIfNeed()
 							delete[]printdata;
 						}
 					}
-					else if (ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + ForceStaffDistance)
+					else if (AutoSuicide == 2 && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + ForceStaffDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
 						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
@@ -2951,8 +2950,7 @@ void SuicideIfNeed()
 
 							int scmd = GetCMDbyItemSlot(forcestaffitemid);
 
-							if (Distance3D(techiesunitx, techiesunity, targetunitz, targetunitx, targetunity, targetunitz) < ForceStaffDistance
-								&& Distance3D(endenemyloc.X, endenemyloc.Y, targetunitz, techiesunitx, techiesunity, targetunitz) < SuicideDistancePart)
+							if (Distance3D(endenemyloc.X, endenemyloc.Y, techiesunitz, techiesunitx, techiesunity, techiesunitz) < SuicideDistancePart)
 							{
 								char* printdata = new char[1024];
 								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~][FORCE_ENEMY1]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
@@ -2977,7 +2975,7 @@ void SuicideIfNeed()
 							delete[]printdata;
 						}
 					}
-					else if (DaggerFound && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance + ForceStaffDistance)
+					else if (AutoSuicide == 2 && DaggerFound && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistancePart + DaggerDistance + ForceStaffDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_PART);
 						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
@@ -3098,14 +3096,20 @@ void ProcessHotkeys()
 	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x35))
 	{
 		IsHotkeyPress = true;
-		AutoSuicide = !AutoSuicide;
 
-		if (AutoSuicide)
+		if (AutoSuicide == 0)
 		{
-			TextPrint("Auto Suicide: |cFF00FF00ENABLED|r", 3.0f);
+			AutoSuicide++;
+			TextPrint("Auto Suicide: |cFF00FF00ENABLED:FULL DMG|r", 3.0f);
 		}
-		else if (!AutoSuicide)
+		else if (AutoSuicide == 1)
 		{
+			AutoSuicide++;
+			TextPrint("Auto Suicide: |cFFFF0000ENABLED:FULL+PART DMG|r", 3.0f);
+		}
+		else 
+		{
+			AutoSuicide = 0;
 			TextPrint("Auto Suicide: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
@@ -3264,7 +3268,7 @@ void WorkTechies()
 	{
 		ParseMapConfiguration();
 
-		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v15.8]|cFF0080E2by Karaulov", 5.0f);
+		TextPrint("|cFFFF0000Unreal Techies Bot|r|cFFDBE51B:[v15.9]|cFF0080E2by Karaulov", 5.0f);
 		TextPrint("|cFFDEFF00T|r|cFFDFFB00h|r|cFFE0F600a|r|cFFE0F201n|r|cFFE1EE01k|r|cFFE2E901 |r|cFFE3E501d|r|cFFE4E101r|r|cFFE5DC01a|r|cFFE5D802c|r|cFFE6D402o|r|cFFE7CF02l|r|cFFE8CB021|r|cFFE9C702c|r|cFFEAC202h|r|cFFEABE03 |r|cFFEBBA03f|r|cFFECB603o|r|cFFEDB103r|r|cFFEEAD03 |r|cFFEEA904s|r|cFFEFA404o|r|cFFF0A004m|r|cFFF19C04e|r|cFFF29704 |r|cFFF39304d|r|cFFF38F05o|r|cFFF48A05t|r|cFFF58605a|r|cFFF68205 |r|cFFF77D05i|r|cFFF87905n|r|cFFF87506f|r|cFFF97006o|r|cFFFA6C06.|r", 0.01f);
 		TextPrint("                                             |c0000FFFF[Techies bot hotkeys]|r", 10.0f);
 		TextPrint("|c0000FF40---------------------------------------------------------------------------------------------------------------------------------------------------------|r", 6.0f);
