@@ -480,7 +480,7 @@ float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, doubl
 			int parts = hppercent / 7 + 1;
 			dmgprotectlvl = dmgprotectlvl * parts;
 
-			PrintBuffListStr += std::string("[HUSKAR ") + std::to_string((int)dmgprotectlvl) + std::string("%]");
+			PrintBuffListStr += std::string("[HUSKAR ") + std::to_string((int)(dmgprotectlvl+0.5f)) + std::string("%]");
 			output_dmg = output_dmg * ((100.0f - dmgprotectlvl) / 100.0f);
 		}
 	}
@@ -1351,11 +1351,7 @@ int GetUnitCount()
 		int UnitsOffset1 = *(int*)(GlobalClassOffset + 0x3BC);
 		if (UnitsOffset1 > 0)
 		{
-			int* UnitsCount = (int*)(UnitsOffset1 + 0x604);
-			if (UnitsCount)
-			{
-				return *UnitsCount;
-			}
+			return *(int*)(UnitsOffset1 + 0x604);
 		}
 	}
 	return 0;
@@ -1373,31 +1369,28 @@ std::vector<unsigned char*> GetUnitsArray()
 		if (UnitsOffset1 > 0)
 		{
 			int* UnitsCountAddr = (int*)(UnitsOffset1 + 0x604);
-			if (*(int*)UnitsCountAddr > 0)
+			int UnitsCount = *(int*)UnitsCountAddr;
+			if (IsOkayPtr((unsigned char*)(UnitsOffset1 + 0x608)) && *(int*)(UnitsOffset1 + 0x608) > 0)
 			{
-				int UnitsCount = *(int*)UnitsCountAddr;
-				if (IsOkayPtr((unsigned char*)(UnitsOffset1 + 0x608)) && *(int*)(UnitsOffset1 + 0x608) > 0)
-				{
-					unsigned char** unitarray = (unsigned char**)*(int*)(UnitsOffset1 + 0x608);
+				unsigned char** unitarray = (unsigned char**)*(int*)(UnitsOffset1 + 0x608);
 
-					if (UnitsCount > 0 && unitarray)
+				if (UnitsCount > 0 && unitarray)
+				{
+					std::set<unsigned char*> addrs;
+					for (int i = 0; i < UnitsCount; i++)
 					{
-						std::set<unsigned char*> addrs;
-						for (int i = 0; i < UnitsCount; i++)
-						{
-							if (addrs.count(unitarray[i]))
-								continue;
-							addrs.insert(unitarray[i]);
-							return_value.push_back(unitarray[i]);
-						}
+						if (addrs.count(unitarray[i]))
+							continue;
+						addrs.insert(unitarray[i]);
+						return_value.push_back(unitarray[i]);
 					}
+				}
 
-					return return_value;
-				}
-				else
-				{
-					return return_value;
-				}
+				return return_value;
+			}
+			else
+			{
+				return return_value;
 			}
 		}
 	}
@@ -1696,7 +1689,7 @@ const char* GetUnitName(unsigned char* unitaddr)
 		if (v3 && (v4 = *(int*)(v3 + 40)) != 0)
 		{
 			v5 = v4 - 1;
-			if (v5 >= (unsigned int)0)
+			if (v5 < 0)
 				v5 = 0;
 			return (const char*)*(int*)(*(int*)(v3 + 44) + 4 * v5);
 		}
