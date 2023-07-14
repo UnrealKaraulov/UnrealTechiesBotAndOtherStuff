@@ -1,11 +1,11 @@
+C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.exe.config
+C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.exe
+C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.pdb
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.csproj.AssemblyReference.cache
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.csproj.SuggestedBindingRedirects.cache
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.Form1.resources
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.Properties.Resources.resources
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.csproj.GenerateResource.cache
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.csproj.CoreCompileInputs.cache
-C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.exe.config
-C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.exe
-C:\Projects\WAR3\Free_bots\ItemUnitInfo\bin\x86\Release\ItemUnitInfo.pdb
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.exe
 C:\Projects\WAR3\Free_bots\ItemUnitInfo\obj\x86\Release\ItemUnitInfo.pdb

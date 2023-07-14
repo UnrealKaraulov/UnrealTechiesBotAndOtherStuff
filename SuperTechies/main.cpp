@@ -54,6 +54,7 @@ long long LastTechiesWork = 0;
 
 
 long long LastDmgTime = 0;
+long long LastSuicideTime = 0;
 
 // Game.dll address
 unsigned char* GameDll = 0;
@@ -167,6 +168,8 @@ int AutoSuicide = 0;
 std::vector<int> UseBeforePlaceItems;
 
 int BaseDmgReducing = 10;
+
+int BaseKeyCode = 'X';
 
 float BaseDmgReducingMagic = 0.75;
 float BaseDmgReducingPhys = 1.0;
@@ -480,7 +483,7 @@ float GetUnitDamageWithProtection(unsigned char* unitaddr, int damagetype, doubl
 			int parts = hppercent / 7 + 1;
 			dmgprotectlvl = dmgprotectlvl * parts;
 
-			PrintBuffListStr += std::string("[HUSKAR ") + std::to_string((int)(dmgprotectlvl+0.5f)) + std::string("%]");
+			PrintBuffListStr += std::string("[HUSKAR ") + std::to_string((int)(dmgprotectlvl + 0.5f)) + std::string("%]");
 			output_dmg = output_dmg * ((100.0f - dmgprotectlvl) / 100.0f);
 		}
 	}
@@ -1200,6 +1203,7 @@ void SaveMainConfiguration()
 	maincfg_write->WriteBool("GENERAL", "DAGGER_ENABLED", EnableDagger);
 	maincfg_write->WriteBool("GENERAL", "FORCESTAFF_ENABLED", EnableForceStaff);
 	maincfg_write->WriteInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
+	maincfg_write->WriteInt("GENERAL", "BASE_KEYCODE", BaseKeyCode);
 }
 
 void ParseMainConfiguration()
@@ -1224,6 +1228,8 @@ void ParseMainConfiguration()
 	BaseDmgReducing = maincfg_read->ReadInt("GENERAL", "BASE_DAMAGE_REDUCE", BaseDmgReducing);
 	BaseDmgReducingMagic = maincfg_read->ReadFloat("GENERAL", "BASE_REDUCE_MAGIC_DMG", BaseDmgReducingMagic);
 	BaseDmgReducingPhys = maincfg_read->ReadFloat("GENERAL", "BASE_REDUCE_PHYS_DMG", BaseDmgReducingPhys);
+
+	BaseKeyCode = maincfg_read->ReadInt("GENERAL", "BASE_KEYCODE", BaseKeyCode);
 }
 
 
@@ -1811,6 +1817,12 @@ void UseDetonator()
 }
 
 
+void StopCommand()
+{
+	IssueWithoutTargetOrderorg(0xd0004, 0, 1, 4);
+}
+
+
 Location GetNextPoint(float x, float y, float distance, float angle)
 {
 	Location returnlocation = Location();
@@ -2269,7 +2281,7 @@ void DetonateIfNeed()
 						{
 							auto tmpBombStruct = BombList[n];
 
-							/*	if (IsKeyPressed('X'))
+							/*	if (IsKeyPressed(BaseKeyCode))
 								{
 									char dbgt[256];
 									sprintf_s(dbgt, "%X, %f, %f, %f, %f, %s, %f, %f, %f", (int)unit, tmpBombStruct.dmg, tmpBombStruct.dmg2,
@@ -2728,9 +2740,9 @@ void SuicideIfNeed()
 					if (Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
-						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || ((int)outdmg > 100 && AutoSuicide == 3))
 						{
-							if (CurTickCount - LastDmgTime > 500)
+							if (CurTickCount - LastDmgTime > 250)
 							{
 								char* printdata = new char[1024];
 								sprintf_s(printdata, 1024, "[~~~SUICIDE ATTACK~~~]: [ %s ]|cFFFFFFFFHP: |r|cFFFF0000%i|r|cFFFFFFFF. DMG: |r|cFFFFCC00%.3f|r.\n%s", GetUnitName(unit), (int)enemyhp, outdmg, PrintBuffListStr.size() > 0 ? PrintBuffListStr.c_str() : "No buff found");
@@ -2749,6 +2761,11 @@ void SuicideIfNeed()
 								CommandOrItemTarget(SuicideCommand, 0, endtechiesloc.X, endtechiesloc.Y, GetSelectedOwnedUnit(), 0x1108006);
 
 								LastDmgTime = CurTickCount;
+								LastSuicideTime = CurTickCount;
+							}
+							else if (CurTickCount - LastSuicideTime > 100 && CurTickCount - LastSuicideTime < 250)
+							{
+								StopCommand();
 							}
 						}
 						else if (abs((int)(enemyhp + BaseDmgReducing) - (int)outdmg) < 150.0f)
@@ -2762,7 +2779,7 @@ void SuicideIfNeed()
 					else if (DaggerFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + DaggerDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
-						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || ((int)outdmg > 100 && AutoSuicide == 3))
 						{
 							float DaggerDist = Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz);
 
@@ -2794,7 +2811,7 @@ void SuicideIfNeed()
 					else if (ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + ForceStaffDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
-						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || ((int)outdmg > 100 && AutoSuicide == 3))
 						{
 							Location starttechiesloc = Location();
 							starttechiesloc.X = techiesunitx;
@@ -2836,7 +2853,7 @@ void SuicideIfNeed()
 					else if (DaggerFound && ForceStaffFound && Distance3D(techiesunitx, techiesunity, techiesunitz, targetunitx, targetunity, targetunitz) < SuicideDistanceFull + DaggerDistance + ForceStaffDistance)
 					{
 						float outdmg = GetUnitDamageWithProtection(unit, DMG_TYPE_PHYS, DMG_FULL);
-						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg)
+						if ((int)(enemyhp + BaseDmgReducing) < (int)outdmg || ((int)outdmg > 100 && AutoSuicide == 3))
 						{
 							Location starttechiesloc = Location();
 							starttechiesloc.X = techiesunitx;
@@ -3003,45 +3020,99 @@ void SuicideIfNeed()
 	}
 }
 
-void ProcessHotkeys()
+void PrintCurrentState()
 {
-	//if (RemoteTechiesFound)
+	if (EnableAutoExplode == 2)
 	{
-		// X + 1
-		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
+		TextPrint("AutoExplode: |cFFEF2020AutoExplode|r", 3.0f);
+	}
+	else if (EnableAutoExplode == 1)
+	{
+		TextPrint("AutoExplode: |cFF00FF00AutoKill|r ", 3.0f);
+	}
+	else if (EnableAutoExplode == 0)
+	{
+		TextPrint("AutoExplode: |cFFFF0000Disabled|r ", 3.0f);
+	}
+
+	if (EnableForceStaff)
+	{
+		TextPrint("ForceStaff: |cFF00FF00ENABLED|r", 3.0f);
+	}
+	else if (!EnableForceStaff)
+	{
+		TextPrint("ForceStaff: |cFFFF0000DISABLED|r", 3.0f);
+	}
+
+	if (EnableDagger)
+	{
+		TextPrint("Dagger: |cFF00FF00ENABLED|r", 3.0f);
+	}
+	else if (!EnableDagger)
+	{
+		TextPrint("Dagger: |cFFFF0000DISABLED|r", 3.0f);
+	}
+
+	if (StatisForceStaff)
+	{
+		TextPrint("Force to Stasis Trap: |cFF00FF00ENABLED|r", 3.0f);
+	}
+	else if (!StatisForceStaff)
+	{
+		TextPrint("Force to Stasis Trap: |cFFFF0000DISABLED|r", 3.0f);
+	}
+
+	if (AutoSuicide == 0)
+	{
+		AutoSuicide++;
+		TextPrint("Auto Suicide: |cFF00FF00ENABLED:FULL DMG|r", 3.0f);
+	}
+	else if (AutoSuicide == 1)
+	{
+		AutoSuicide++;
+		TextPrint("Auto Suicide: |cFFFF0000ENABLED:FULL+PART DMG|r", 3.0f);
+	}
+	else
+	{
+		AutoSuicide = 0;
+		TextPrint("Auto Suicide: |cFFFF0000DISABLED|r", 3.0f);
+	}
+}
+
+UINT lastmsg = 0;
+WPARAM lastwparam = 0;
+
+void ProcessHotkeys(LPMSG lmsg)
+{
+	if (lmsg->wParam == lastwparam && lmsg->message == lastmsg)
+		return;
+
+	lastmsg = lmsg->message;
+	lastwparam = lmsg->wParam;
+
+	if (lmsg->message == WM_KEYUP && IsKeyPressed(BaseKeyCode) && lmsg->wParam == 0x31)
+	{
+		EnableAutoExplode++;
+
+		if (EnableAutoExplode > 2)
+			EnableAutoExplode = 0;
+
+		if (EnableAutoExplode == 2)
 		{
-			IsHotkeyPress = true;
-			EnableAutoExplode++;
-
-			if (EnableAutoExplode > 2)
-				EnableAutoExplode = 0;
-
-			if (EnableAutoExplode == 2)
-			{
-				TextPrint("AutoExplode: |cFFEF2020AutoExplode|r", 3.0f);
-			}
-			else if (EnableAutoExplode == 1)
-			{
-				TextPrint("AutoExplode: |cFF00FF00AutoKill|r ", 3.0f);
-			}
-			else if (EnableAutoExplode == 0)
-			{
-				TextPrint("AutoExplode: |cFFFF0000Disabled|r ", 3.0f);
-			}
+			TextPrint("AutoExplode: |cFFEF2020AutoExplode|r", 3.0f);
+		}
+		else if (EnableAutoExplode == 1)
+		{
+			TextPrint("AutoExplode: |cFF00FF00AutoKill|r ", 3.0f);
+		}
+		else if (EnableAutoExplode == 0)
+		{
+			TextPrint("AutoExplode: |cFFFF0000Disabled|r ", 3.0f);
 		}
 	}
-	/*else
+
+	if (lmsg->message == WM_KEYUP && IsKeyPressed(BaseKeyCode) && lmsg->wParam == 0x32)
 	{
-		if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x31))
-		{
-			IsHotkeyPress = true;
-			TextPrint("AutoExplode: |cFFEF2020No hero with access|r", 3.0f);
-		}*
-	}*/
-	// X + 2
-	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x32))
-	{
-		IsHotkeyPress = true;
 		EnableForceStaff = !EnableForceStaff;
 
 		if (EnableForceStaff)
@@ -3053,10 +3124,9 @@ void ProcessHotkeys()
 			TextPrint("ForceStaff: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
-	// X + 3
-	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x33))
+
+	if (lmsg->message == WM_KEYUP && IsKeyPressed(BaseKeyCode) && lmsg->wParam == 0x33)
 	{
-		IsHotkeyPress = true;
 		EnableDagger = !EnableDagger;
 
 		if (EnableDagger)
@@ -3069,10 +3139,8 @@ void ProcessHotkeys()
 		}
 	}
 
-	// X + 4
-	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x34))
+	if (lmsg->message == WM_KEYUP && IsKeyPressed(BaseKeyCode) && lmsg->wParam == 0x34)
 	{
-		IsHotkeyPress = true;
 		StatisForceStaff = !StatisForceStaff;
 
 		if (StatisForceStaff)
@@ -3085,11 +3153,8 @@ void ProcessHotkeys()
 		}
 	}
 
-	// X + 5
-	if (!IsHotkeyPress && IsKeyPressed('X') && IsKeyPressed(0x35))
+	if (lmsg->message == WM_KEYUP && IsKeyPressed(BaseKeyCode) && lmsg->wParam == 0x35)
 	{
-		IsHotkeyPress = true;
-
 		if (AutoSuicide == 0)
 		{
 			AutoSuicide++;
@@ -3100,16 +3165,19 @@ void ProcessHotkeys()
 			AutoSuicide++;
 			TextPrint("Auto Suicide: |cFFFF0000ENABLED:FULL+PART DMG|r", 3.0f);
 		}
-		else 
+		else if (AutoSuicide == 2)
+		{
+			AutoSuicide++;
+			TextPrint("Auto Suicide: |cFFFF0000ENABLED:!!!AUTO!!!|r", 3.0f);
+		}
+		else
 		{
 			AutoSuicide = 0;
 			TextPrint("Auto Suicide: |cFFFF0000DISABLED|r", 3.0f);
 		}
 	}
 
-
-	// X + 6
-	if (IsKeyPressed('X') && IsKeyPressed(0x36) && RemoteTechiesFound)
+	if (IsKeyPressed(BaseKeyCode) && IsKeyPressed(0x36) && RemoteTechiesFound)
 	{
 		if (!IsHotkeyPress)
 		{
@@ -3142,6 +3210,7 @@ void ProcessHotkeys()
 			SelectTechies();
 		}
 	}
+	else IsHotkeyPress = false;
 }
 
 void UpdateBombList()
@@ -3173,7 +3242,7 @@ void UpdateBombList()
 }
 
 
-void WorkTechies()
+void WorkTechies(LPARAM lParam)
 {
 	if (InitializeTime == 0)
 	{
@@ -3278,27 +3347,20 @@ void WorkTechies()
 
 	if (IsBotStarted)
 	{
-		UpdateBombList();
-		if (RemoteTechiesFound)
-			DetonateIfNeed();
-		ProcessForceStaffAndDagger();
-		ProcessHotkeys();
-		SuicideIfNeed();
-
-		if (IsHotkeyPress)
+		if (llabs(CurTickCount - LastTechiesWork) > (ExpertModeEnabled ? 10 : 15))
 		{
-			bool pressedKey = false;
-			if (IsKeyPressed('X'))
-			{
-				for (int i = 0; i < 9; i++)
-				{
-					if (IsKeyPressed(0x31 + i))
-					{
-						pressedKey = true;
-					}
-				}
-			}
-			IsHotkeyPress = pressedKey;
+			UpdateBombList();
+			if (RemoteTechiesFound)
+				DetonateIfNeed();
+			ProcessForceStaffAndDagger();
+			SuicideIfNeed();
+			LastTechiesWork = CurTickCount;
+		}
+
+		if (lParam > 0)
+		{
+			LPMSG lmsg = (LPMSG)lParam;
+			ProcessHotkeys(lmsg);
 		}
 	}
 }
@@ -3315,23 +3377,19 @@ LRESULT CALLBACK HookCallWndProc(int nCode, WPARAM wParam, LPARAM lParam)
 	if (nCode < HC_ACTION)
 		return CallNextHookEx(hhookSysMsg, nCode, wParam, lParam);
 
-	CurTickCount = (long long)GetTickCount();
-
-	if (llabs(CurTickCount - LastTechiesWork) > (ExpertModeEnabled ? 10 : 15))
+	if (GetCurrentThreadId() == gameThread)
 	{
-		if (GetCurrentThreadId() == gameThread)
+		CurTickCount = (long long)GetTickCount();
+
+		try
 		{
-			LastTechiesWork = CurTickCount;
-			try
-			{
-				WorkTechies();
-			}
-			catch (...)
-			{
-				ErrorCount++;
-				std::string path = techiesBotFileName + "\\main.ini";
-				maincfg_write->WriteInt("GENERAL", "ERRORS", ErrorCount);
-			}
+			WorkTechies(lParam);
+		}
+		catch (...)
+		{
+			ErrorCount++;
+			std::string path = techiesBotFileName + "\\main.ini";
+			maincfg_write->WriteInt("GENERAL", "ERRORS", ErrorCount);
 		}
 	}
 	return CallNextHookEx(hhookSysMsg, nCode, wParam, lParam);
@@ -3402,7 +3460,10 @@ int WINAPI DllMain(HINSTANCE hDLL, int reason, LPVOID reserved)
 		{
 			g_HWND = NULL;
 			EnumWindows(EnumWindowsProcMy, GetCurrentProcessId());
-			gameThread = GetWindowThreadProcessId(g_HWND, 0);
+			if (g_HWND)
+				gameThread = GetWindowThreadProcessId(g_HWND, 0);
+			else
+				gameThread = GetCurrentThreadId();
 		}
 		else
 			gameThread = GetCurrentThreadId();
