@@ -8,6 +8,6 @@ https://github.com/UnrealKaraulov/UnrealTechiesBotAndOtherStuff/blob/main/Releas
 https://github.com/UnrealKaraulov/UnrealTechiesBotAndOtherStuff/tree/main/Release/UnrealTechiesBot_v15
 
 для немного туповатых, в итоге должно получиться так:
-
+D:/War3/war3.exe
 D:/War3/UnrealTechiesBot_v15.mix
 D:/War3/UnrealTechiesBot_v15/.ini
