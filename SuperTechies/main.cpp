@@ -3250,10 +3250,8 @@ void WorkTechies(LPARAM lParam)
 		return;
 	}
 
-	if (llabs(CurTickCount - InitializeTime) > 1000)
+	if (llabs(CurTickCount - InitializeTime) > 1000 && !IsBotInitialized)
 	{
-		IsBotInitialized = true;
-
 		if (GetModuleHandle("UnrealTechiesBot_final.mix") ||
 			GetModuleHandle("UnrealTechiesBot_final_hotfix1.mix") ||
 			GetModuleHandle("UnrealTechiesBot_final_hotfix2.mix") ||
@@ -3300,6 +3298,8 @@ void WorkTechies(LPARAM lParam)
 			std::quick_exit(0);
 			return;
 		}
+		IsBotInitialized = true;
+
 	}
 
 	if (!IsBotInitialized)
